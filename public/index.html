@@ -47,13 +47,32 @@
     letter-spacing: .22em; text-transform: uppercase;
     margin: 0;
   }
-  .scope { font-family: var(--mono); font-size: 11.5px; color: var(--dim); letter-spacing: .04em; }
+  /* 見出しを「全部出す」ボタンにする。見た目は文字のまま */
+  .wordmark button {
+    font: inherit; letter-spacing: inherit; text-transform: inherit;
+    color: inherit; background: none; border: 0; border-radius: 0;
+    padding: 0; cursor: pointer;
+  }
+  .wordmark button:hover { color: var(--review); background: none; border: 0; }
+  .scope {
+    font-family: var(--mono); font-size: 11.5px; color: var(--dim); letter-spacing: .04em;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+  /* リポジトリの表示トグル。押されているものだけ盤面に出す */
+  .repo {
+    text-transform: none; letter-spacing: .02em;
+    padding: 3px 8px; color: var(--faint); border-color: var(--line);
+  }
+  .repo[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  .repo[aria-pressed="false"] { text-decoration: line-through; text-decoration-color: var(--line); }
+  .repo:hover { color: var(--ink); }
   .top .spacer { flex: 1 1 auto; }
   .status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); letter-spacing: .03em; }
   .status b { color: var(--dim); font-weight: 500; }
   /* 文字は baseline で揃えたいが、ボタンは箱として中央で揃える。
-     ☰ は中にテキストが無く baseline を持たないので、baseline のままだと下端で揃って落ちる */
-  .top button { align-self: center; height: var(--btn-h); }
+     ☰ は中にテキストが無く baseline を持たないので、baseline のままだと下端で揃って落ちる。
+     見出しの中のボタンとリポジトリのチップは対象外にしたいので直接の子だけ */
+  .top > button { align-self: center; height: var(--btn-h); }
 
   button {
     font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
@@ -235,8 +254,8 @@
 
 <div class="wrap">
   <div class="top">
-    <h1 class="wordmark">PRレーダー</h1>
-    <span class="scope" id="scope">example-org</span>
+    <h1 class="wordmark"><button id="showall" type="button" title="すべてのリポジトリを表示">PRレーダー</button></h1>
+    <span class="scope" id="scope"></span>
     <span class="spacer"></span>
     <span class="status" id="status">読み込み待ち</span>
     <button id="refresh">更新</button>
@@ -436,9 +455,55 @@ async function gh(path, token) {
   return res.json();
 }
 
+/* 直近の取得結果。フィルタはこれを絞り直すだけで、取り直しはしない */
+let fetched = null;    // [{ repo, lane, pr }] | null
+let shownRepos = [];   // いまトグルとして並べている owner/repo
+const hiddenRepos = new Set();
+
+/* リポジトリ名のトグル。押されているものだけ盤面に出す */
+function renderScope() {
+  const box = $("scope");
+  box.textContent = "";
+  if (!shownRepos.length) {
+    box.textContent = "リポジトリ未設定";
+    return;
+  }
+  for (const repo of shownRepos) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "repo";
+    b.textContent = repo.split("/")[1] || repo;
+    b.title = repo;
+    b.setAttribute("aria-pressed", String(!hiddenRepos.has(repo)));
+    b.onclick = () => {
+      if (hiddenRepos.has(repo)) hiddenRepos.delete(repo);
+      else hiddenRepos.add(repo);
+      renderScope();
+      renderBoard();
+    };
+    box.append(b);
+  }
+}
+
+/* 取得済みの結果をフィルタしてレーンに流し込む */
+function renderBoard() {
+  if (!fetched) return;
+  const buckets = { ready: [], draft: [], review: [], other: [] };
+  for (const item of fetched) {
+    if (hiddenRepos.has(item.repo)) continue;
+    buckets[item.lane].push(item.pr);
+  }
+  for (const k in buckets) buckets[k].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  const allHidden = shownRepos.length > 0 && hiddenRepos.size === shownRepos.length;
+  LANES.forEach((l) => renderLane(l, buckets[l.id], allHidden ? "リポジトリをすべて非表示にしています。" : undefined));
+}
+
 async function refresh() {
   const repos = cfg.repos.split("\n").map((s) => s.trim()).filter(Boolean);
-  $("scope").textContent = repos.length ? repos.map((r) => r.split("/")[1]).join(" · ") : "リポジトリ未設定";
+  shownRepos = repos;
+  for (const r of [...hiddenRepos]) if (!repos.includes(r)) hiddenRepos.delete(r);
+  renderScope();
 
   if (!cfg.token) {
     showAlert(tokenNote ? "トークンを読み込めませんでした" : "アクセストークンがまだ入っていません",
@@ -473,7 +538,6 @@ async function refresh() {
   const off = new Set(cfg.off || []);
   const ours = new Set([me, ...mates].filter((login) => !off.has(login)));
 
-  const buckets = { ready: [], draft: [], review: [], other: [] };
   const failed = [];
 
   const results = await Promise.all(repos.map(async (r) => {
@@ -481,7 +545,9 @@ async function refresh() {
     catch (e) { failed.push(r + (e.status === 404 ? "（見つからない／権限なし）" : "（" + e.message + "）")); return []; }
   }));
 
-  for (const list of results) {
+  // どのリポジトリから来た PR かを持たせておく。フィルタはこれを見る
+  fetched = [];
+  results.forEach((list, i) => {
     for (const pr of list) {
       const author = (pr.user && pr.user.login || "").toLowerCase();
       const reviewers = (pr.requested_reviewers || []).map((u) => u.login.toLowerCase());
@@ -489,12 +555,11 @@ async function refresh() {
       if (reviewers.includes(me)) lane = "review";
       else if (ours.has(author)) lane = pr.draft ? "draft" : "ready";
       else lane = "other";
-      buckets[lane].push(pr);
+      fetched.push({ repo: repos[i], lane, pr });
     }
-  }
-  for (const k in buckets) buckets[k].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  });
 
-  LANES.forEach((l) => renderLane(l, buckets[l.id]));
+  renderBoard();
 
   if (failed.length) showAlert("読めなかったリポジトリがあります", esc(failed.join(" / ")));
   else clearAlert();
@@ -615,6 +680,7 @@ function setSettings(open) {
   (open ? $("token") : $("toggle")).focus();
 }
 
+$("showall").onclick = () => { hiddenRepos.clear(); renderScope(); renderBoard(); };
 $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
 $("scrim").onclick = () => setSettings(false);
