@@ -150,6 +150,8 @@
     font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
   }
   .people .none { margin: 0; font-size: 11.5px; color: var(--faint); }
+  .repo-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   .field input, .field textarea {
     font-family: var(--mono); font-size: 12.5px;
     padding: 7px 9px; border: 1px solid var(--line); border-radius: 2px;
@@ -288,7 +290,8 @@
     <div class="field">
       <label for="repos">対象リポジトリ</label>
       <textarea id="repos" rows="3" spellcheck="false"></textarea>
-      <span class="hint">owner/repo を1行ずつ。</span>
+      <span class="hint">owner/repo を1行ずつ。下のトグルは開いたときに表示するリポジトリで、ヘッダーのトグルはその場かぎりの絞り込み。</span>
+      <div class="repo-toggles" id="repofilter"></div>
     </div>
     <div class="field">
       <label for="interval">自動更新（秒）</label>
@@ -326,8 +329,9 @@ const DEFAULTS = {
   mates: "octocat",
   repos: "example-org/repo-a\nexample-org/repo-b\nexample-org/repo-c",
   interval: 60,
-  me: "",   // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
-  off: []   // チェックを外した author（小文字）。既定はチェック済み扱い
+  me: "",     // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
+  off: [],    // チェックを外した author（小文字）。既定はチェック済み扱い
+  hidden: []  // 開いたときに畳んでおくリポジトリ。既定は全部表示
 };
 const KEY = "pr-radar:config";
 
@@ -656,13 +660,45 @@ function renderPeople() {
   }
 }
 
+/* 初期表示のリポジトリ。保存するまでは画面側だけで持つ */
+let repoOff = new Set();
+
+function renderRepoFilter() {
+  const box = $("repofilter");
+  box.textContent = "";
+  const repos = $("repos").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!repos.length) {
+    const p = document.createElement("p");
+    p.className = "none";
+    p.textContent = "リポジトリを入れると、ここに並びます。";
+    box.append(p);
+    return;
+  }
+  for (const repo of repos) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "repo";
+    b.textContent = repo.split("/")[1] || repo;
+    b.title = repo;
+    b.setAttribute("aria-pressed", String(!repoOff.has(repo)));
+    b.onclick = () => {
+      if (repoOff.has(repo)) repoOff.delete(repo);
+      else repoOff.add(repo);
+      renderRepoFilter();
+    };
+    box.append(b);
+  }
+}
+
 function fillForm() {
   $("token").value = cfg.token;
   $("mates").value = cfg.mates;
   $("repos").value = cfg.repos;
   $("interval").value = cfg.interval;
   peopleOff = new Set(cfg.off || []);
+  repoOff = new Set(cfg.hidden || []);
   renderPeople();
+  renderRepoFilter();
 }
 function schedule() {
   if (timer) clearInterval(timer);
@@ -686,19 +722,26 @@ $("close").onclick = () => setSettings(false);
 $("scrim").onclick = () => setSettings(false);
 $("refresh").onclick = refresh;
 $("mates").oninput = renderPeople;
+$("repos").oninput = renderRepoFilter;
 
 $("save").onclick = async () => {
-  // 一覧から消えた人のチェック状態は持ち越さない
+  // 一覧から消えた人・リポジトリのトグル状態は持ち越さない
   const live = new Set(peopleList().map((p) => p.key));
   peopleOff = new Set([...peopleOff].filter((key) => live.has(key)));
+  const liveRepos = new Set($("repos").value.split("\n").map((s) => s.trim()).filter(Boolean));
+  repoOff = new Set([...repoOff].filter((repo) => liveRepos.has(repo)));
   cfg = {
     token: $("token").value.trim(),
     mates: $("mates").value.trim(),
     repos: $("repos").value.trim(),
     interval: Number($("interval").value) || 0,
     me: cfg.me,
-    off: [...peopleOff]
+    off: [...peopleOff],
+    hidden: [...repoOff]
   };
+  // 初期値を変えたら、いまの絞り込みもそこへ揃える
+  hiddenRepos.clear();
+  for (const repo of repoOff) hiddenRepos.add(repo);
   tokenNote = "";
   await saveConfig();
   $("testout").hidden = true;
@@ -783,6 +826,7 @@ document.addEventListener("keydown", (e) => {
     $("cryptonote").hidden = false;
   }
   await loadConfig();
+  for (const repo of cfg.hidden || []) hiddenRepos.add(repo);
   fillForm();
   schedule();
   refresh();
