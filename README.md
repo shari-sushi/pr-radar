@@ -9,17 +9,25 @@ example-org の複数リポジトリにまたがる open PR / draft PR を、1�
 ```sh
 git clone git@github.com:<owner>/pr-radar.git
 cd pr-radar
-python3 -m http.server 8787
+./run.sh
 ```
 
-`http://localhost:8787/` を開いて、**設定** から次の2つを入れる。
+`http://127.0.0.1:49787/` を開いて、**設定** から次の2つを入れる。
 
 - **アクセストークン** — 下記参照
 - **一緒に見る人** — 自分以外で追いたい人の GitHub ID（自分は `/user` から自動で入る）
 
 対象リポジトリと自動更新間隔も設定から変えられる。設定は `localStorage`（キー `pr-radar:config`）に保存されるので、次回からは開くだけ。トークンは端末の外に出ない。
 
-`index.html` をブラウザで直接開いても動くが、`http://` で配信したほうが行儀がいい。
+### なぜ `run.sh` を使うのか
+
+`python3 -m http.server` を直接叩かず、スクリプト経由で起動する。3点を固定するため。
+
+- **ポートを 49787 に固定する。** `localStorage` は「scheme + host + **port**」単位で分離される。あとから同じポートで別プロジェクトを配信すると、そのページから pr-radar の設定が読める。このポートは pr-radar 専用にする
+- **`--bind 127.0.0.1` で自分の端末に閉じる。** `python3 -m http.server` の既定は全インターフェースへの bind なので、同じ Wi-Fi にいる誰でもこの画面を開けてしまう
+- **`--directory` でこのディレクトリだけを配信する。** 親ディレクトリごと配信すると、隣のプロジェクトが pr-radar と同一オリジンになる
+
+`index.html` をブラウザで直接開いても表示はされるが、上の分離が効かないので `./run.sh` を使う。
 
 ## トークン
 
