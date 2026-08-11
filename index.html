@@ -58,14 +58,50 @@
   button:hover { color: var(--ink); border-color: var(--dim); background: var(--panel); }
   :focus-visible { outline: 2px solid var(--review); outline-offset: 2px; }
 
-  /* ---------- settings ---------- */
-  .settings {
-    background: var(--panel); border: 1px solid var(--line);
-    padding: 18px; margin-bottom: 22px;
-    display: grid; gap: 16px;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* ---------- hamburger ---------- */
+  .burger {
+    display: inline-flex; flex-direction: column; justify-content: center; gap: 3px;
+    width: 32px; height: 26px; padding: 0 7px;
   }
-  .settings[hidden] { display: none; }
+  .burger span {
+    display: block; height: 1.5px; background: currentColor;
+    transition: transform .16s, opacity .16s;
+  }
+  .burger[aria-expanded="true"] span:nth-child(1) { transform: translateY(4.5px) rotate(45deg); }
+  .burger[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+  .burger[aria-expanded="true"] span:nth-child(3) { transform: translateY(-4.5px) rotate(-45deg); }
+
+  /* ---------- settings drawer ---------- */
+  .scrim {
+    position: fixed; inset: 0; z-index: 10;
+    background: rgba(14, 26, 34, .35);
+    opacity: 0; visibility: hidden;
+    transition: opacity .18s, visibility .18s;
+  }
+  .scrim.open { opacity: 1; visibility: visible; }
+
+  .settings {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 11;
+    width: min(420px, 100%);
+    background: var(--panel); border-left: 1px solid var(--line);
+    padding: 16px 18px 24px;
+    display: grid; gap: 16px; align-content: start;
+    overflow-y: auto; overscroll-behavior: contain;
+    transform: translateX(100%); visibility: hidden;
+    transition: transform .18s ease, visibility .18s;
+  }
+  .settings.open { transform: none; visibility: visible; }
+  body.locked { overflow: hidden; }
+
+  .drawer-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border-bottom: 1px solid var(--line); padding-bottom: 12px;
+  }
+  .drawer-head h2 {
+    margin: 0; font-family: var(--mono); font-weight: 700;
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim);
+  }
+  .drawer-head button { padding: 3px 8px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
   .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.45; }
@@ -77,7 +113,7 @@
     background: #FBFCFC; color: var(--ink); width: 100%; resize: vertical;
   }
   .field input:focus, .field textarea:focus { border-color: var(--dim); outline: none; background: #fff; }
-  .settings .actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  .settings .actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .settings .actions .note { font-size: 11.5px; color: var(--faint); }
   .save { border-color: var(--ink) !important; color: var(--ink) !important; font-weight: 700; }
 
@@ -180,12 +216,20 @@
     <span class="spacer"></span>
     <span class="status" id="status">読み込み待ち</span>
     <button id="refresh">更新</button>
-    <button id="toggle">設定</button>
+    <button class="burger" id="toggle" aria-label="設定" aria-expanded="false" aria-controls="settings">
+      <span></span><span></span><span></span>
+    </button>
   </div>
 
   <div class="alert" id="alert" hidden></div>
 
-  <div class="settings" id="settings" hidden>
+  <div class="scrim" id="scrim"></div>
+
+  <aside class="settings" id="settings" role="dialog" aria-modal="true" aria-label="設定">
+    <div class="drawer-head">
+      <h2>設定</h2>
+      <button id="close" aria-label="閉じる">✕</button>
+    </div>
     <div class="field">
       <label for="token">アクセストークン</label>
       <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
@@ -214,7 +258,7 @@
       <span class="note">設定はこのブラウザに保存されます（トークンは <code>key.js</code> の鍵で暗号化）。読み取り専用のトークンを使ってください。</span>
     </div>
     <div class="test-out" id="testout" hidden></div>
-  </div>
+  </aside>
 
   <div class="board">
     <div class="col">
@@ -250,6 +294,7 @@ const LANES = [
 
 let cfg = { ...DEFAULTS };
 let timer = null;
+let autoOpened = false;  // トークン未設定で設定を自動で開くのは初回だけ
 
 /* ---------- storage (localStorage) ---------- */
 /* 設定は平文で置くが、トークンだけは key.js の鍵で暗号化して別キーに分ける。
@@ -371,7 +416,7 @@ async function refresh() {
   if (!cfg.token) {
     showAlert(tokenNote ? "トークンを読み込めませんでした" : "アクセストークンがまだ入っていません",
       tokenNote || "設定を開いてトークンを入れると、プライベートリポジトリのPRが読めるようになります。");
-    $("settings").hidden = false;
+    if (!autoOpened) { autoOpened = true; setSettings(true); }
     LANES.forEach((l) => renderLane(l, null, "トークンを入れると表示されます"));
     return;
   }
@@ -471,7 +516,19 @@ function schedule() {
   if (s >= 15) timer = setInterval(refresh, s * 1000);
 }
 
-$("toggle").onclick = () => { $("settings").hidden = !$("settings").hidden; };
+/* 設定ドロワー。開閉はクラスで持つ（hidden だと transition が効かないため） */
+const settingsOpen = () => $("settings").classList.contains("open");
+function setSettings(open) {
+  $("settings").classList.toggle("open", open);
+  $("scrim").classList.toggle("open", open);
+  $("toggle").setAttribute("aria-expanded", String(open));
+  document.body.classList.toggle("locked", open);
+  (open ? $("token") : $("toggle")).focus();
+}
+
+$("toggle").onclick = () => setSettings(!settingsOpen());
+$("close").onclick = () => setSettings(false);
+$("scrim").onclick = () => setSettings(false);
 $("refresh").onclick = refresh;
 $("save").onclick = async () => {
   cfg = {
@@ -483,7 +540,7 @@ $("save").onclick = async () => {
   tokenNote = "";
   await saveConfig();
   $("testout").hidden = true;
-  $("settings").hidden = true;
+  setSettings(false);
   schedule();
   refresh();
 };
@@ -549,10 +606,12 @@ $("test").onclick = async () => {
   paint();
 };
 document.addEventListener("keydown", (e) => {
+  // Esc は入力欄の中からも効かせる
+  if (e.key === "Escape" && settingsOpen()) { setSettings(false); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (e.key === "r") refresh();
-  if (e.key === "s") $("settings").hidden = !$("settings").hidden;
+  if (e.key === "s") setSettings(!settingsOpen());
 });
 
 (async () => {
