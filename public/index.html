@@ -14,6 +14,9 @@
     --draft:   #4C5F8F;
     --review:  #C8102E;
     --other:   #8B9AA4;
+    /* ボタン1個分の高さ（11.5px × 1.5 + 上下 padding 5px + 枠 1px）。
+       px で置くのは、使う側の font-size を変えても高さがずれないようにするため */
+    --btn-h: 29px;
     --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
     --mono: ui-monospace, SFMono-Regular, Menlo, "Roboto Mono", monospace;
   }
@@ -50,7 +53,7 @@
   .status b { color: var(--dim); font-weight: 500; }
   /* 文字は baseline で揃えたいが、ボタンは箱として中央で揃える。
      ☰ は中にテキストが無く baseline を持たないので、baseline のままだと下端で揃って落ちる */
-  .top button { align-self: center; }
+  .top button { align-self: center; height: var(--btn-h); }
 
   button {
     font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
@@ -65,9 +68,7 @@
   /* ---------- hamburger ---------- */
   .burger {
     display: inline-flex; flex-direction: column; justify-content: center; gap: 3px;
-    width: 30px; padding: 0 8px;
-    /* 文字のあるボタンと同じ高さにする（本文1行 + 上下 padding 5px + 枠 1px） */
-    height: calc(1.5em + 12px);
+    width: 30px; padding: 0 8px; height: var(--btn-h);
   }
   .burger span {
     display: block; height: 1.5px; background: currentColor;
@@ -108,8 +109,8 @@
     margin: 0; font-family: var(--mono); font-weight: 700;
     font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim);
   }
-  /* ✕ は ☰ と同じ寸法にする。ボタンは中身を自動で中央に置く */
-  .drawer-head button { width: 30px; height: calc(1.5em + 12px); padding: 0; }
+  /* ✕ は ☰ と同じ寸法。グリフが小さいと箱まで小さく見えるので少し大きめ */
+  .drawer-head button { width: 30px; height: var(--btn-h); padding: 0; font-size: 14px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
   .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.45; }
