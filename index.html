@@ -1,0 +1,498 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRレーダー — example-org</title>
+<style>
+  :root {
+    --bg:      #E7EAEC;
+    --panel:   #FFFFFF;
+    --ink:     #0E1A22;
+    --dim:     #63747F;
+    --faint:   #93A1AA;
+    --line:    #D3D9DD;
+    --ready:   #0E7C6B;
+    --draft:   #4C5F8F;
+    --review:  #C8102E;
+    --other:   #8B9AA4;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, "Roboto Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 18px 64px; }
+
+  /* ---------- masthead ---------- */
+  .top {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding-bottom: 12px; margin-bottom: 20px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .wordmark {
+    font-family: var(--mono);
+    font-size: 15px; font-weight: 700;
+    letter-spacing: .22em; text-transform: uppercase;
+    margin: 0;
+  }
+  .scope { font-family: var(--mono); font-size: 11.5px; color: var(--dim); letter-spacing: .04em; }
+  .top .spacer { flex: 1 1 auto; }
+  .status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); letter-spacing: .03em; }
+  .status b { color: var(--dim); font-weight: 500; }
+
+  button {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
+    text-transform: uppercase;
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 2px;
+    padding: 5px 10px; cursor: pointer;
+  }
+  button:hover { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  :focus-visible { outline: 2px solid var(--review); outline-offset: 2px; }
+
+  /* ---------- settings ---------- */
+  .settings {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 18px; margin-bottom: 22px;
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+  .settings[hidden] { display: none; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.45; }
+  .field input, .field textarea {
+    font-family: var(--mono); font-size: 12.5px;
+    padding: 7px 9px; border: 1px solid var(--line); border-radius: 2px;
+    background: #FBFCFC; color: var(--ink); width: 100%; resize: vertical;
+  }
+  .field input:focus, .field textarea:focus { border-color: var(--dim); outline: none; background: #fff; }
+  .settings .actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  .settings .actions .note { font-size: 11.5px; color: var(--faint); }
+  .save { border-color: var(--ink) !important; color: var(--ink) !important; font-weight: 700; }
+
+  .test-out {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line); padding-top: 12px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.65;
+    display: grid; gap: 3px;
+  }
+  .test-out[hidden] { display: none; }
+  .test-out > div { display: flex; gap: 9px; align-items: baseline; }
+  .test-out .mark { flex: none; width: 1em; font-weight: 700; }
+  .test-out .ok   { color: var(--ready); }
+  .test-out .ng   { color: var(--review); }
+  .test-out .wait { color: var(--faint); }
+
+  /* ---------- board ---------- */
+  .board { display: grid; gap: 22px; grid-template-columns: 1fr; align-items: start; }
+  @media (min-width: 1040px) { .board { grid-template-columns: 1fr 1fr; gap: 22px 26px; } }
+  .col { display: grid; gap: 22px; align-items: start; }
+
+  .lane { display: grid; grid-template-columns: 46px 1fr; background: var(--panel); border: 1px solid var(--line); }
+
+  /* the rail — the one loud thing on the page */
+  .rail {
+    background: var(--c); color: #fff;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 0 14px; gap: 12px;
+  }
+  .rail .n {
+    font-family: var(--mono); font-size: 20px; font-weight: 700;
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .rail .lbl {
+    writing-mode: vertical-rl; text-orientation: upright;
+    font-size: 12px; font-weight: 700; letter-spacing: .28em;
+  }
+
+  .lane-body { min-width: 0; }
+  .lane-head {
+    padding: 11px 14px 10px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
+  .lane-head h2 { margin: 0; font-size: 13.5px; font-weight: 700; letter-spacing: .01em; }
+  .lane-head .sub { font-size: 11.5px; color: var(--faint); }
+
+  .pr {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
+    padding: 10px 14px; border-bottom: 1px solid #EDF0F1;
+    text-decoration: none; color: inherit; position: relative;
+  }
+  .pr:last-child { border-bottom: 0; }
+  .pr::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--c); opacity: 0; transition: opacity .12s;
+  }
+  .pr:hover, .pr:focus-visible { background: #F7F9F9; }
+  .pr:hover::before, .pr:focus-visible::before { opacity: 1; }
+  .pr .t { font-size: 13.5px; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+  .pr:hover .t { text-decoration: underline; text-underline-offset: 2px; }
+  .pr .num {
+    font-family: var(--mono); font-size: 11.5px; color: var(--faint);
+    white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .pr .m {
+    grid-column: 1 / -1;
+    font-family: var(--mono); font-size: 11px; color: var(--dim);
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;
+  }
+  .pr .m .sep { color: var(--line); }
+  .chip {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.5;
+  }
+  .chip.draft { color: var(--draft); }
+  .chip.stale { color: #B26B00; }
+  .chip.rot   { color: var(--review); }
+  .chip.label { text-transform: none; letter-spacing: 0; color: var(--faint); }
+
+  .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
+
+  .alert {
+    background: var(--panel); border: 1px solid var(--review); border-left-width: 3px;
+    padding: 12px 14px; margin-bottom: 18px; font-size: 13px;
+  }
+  .alert[hidden] { display: none; }
+  .alert b { display: block; margin-bottom: 3px; }
+  .alert code { font-family: var(--mono); font-size: 12px; background: #F2F4F5; padding: 1px 4px; }
+
+  .kbd { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-top: 26px; text-align: center; }
+  .kbd kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--panel); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1 class="wordmark">PRレーダー</h1>
+    <span class="scope" id="scope">example-org</span>
+    <span class="spacer"></span>
+    <span class="status" id="status">読み込み待ち</span>
+    <button id="refresh">更新</button>
+    <button id="toggle">設定</button>
+  </div>
+
+  <div class="alert" id="alert" hidden></div>
+
+  <div class="settings" id="settings" hidden>
+    <div class="field">
+      <label for="token">アクセストークン</label>
+      <input id="token" type="password" placeholder="ghp_..." autocomplete="off" spellcheck="false">
+      <span class="hint">GitHub の Settings → Developer settings → Personal access tokens (classic) で <code>repo</code> にチェックして発行。SSO必須の組織なら発行後に Configure SSO で example-org を認可する。</span>
+    </div>
+    <div class="field">
+      <label for="mates">一緒に見る人</label>
+      <input id="mates" placeholder="octocat" autocomplete="off" spellcheck="false">
+      <span class="hint">自分は自動で入るので、もう1人のGitHub IDだけ。複数ならカンマ区切り。</span>
+    </div>
+    <div class="field">
+      <label for="repos">対象リポジトリ</label>
+      <textarea id="repos" rows="3" spellcheck="false"></textarea>
+      <span class="hint">owner/repo を1行ずつ。</span>
+    </div>
+    <div class="field">
+      <label for="interval">自動更新（秒）</label>
+      <input id="interval" type="number" min="15" step="15">
+      <span class="hint">0 で自動更新を止める。</span>
+    </div>
+    <div class="actions">
+      <button class="save" id="save">保存して更新</button>
+      <button id="test">接続テスト</button>
+      <button id="forget">トークンを消す</button>
+      <span class="note">設定はこのブラウザに保存されます。読み取り専用のトークンを使ってください。</span>
+    </div>
+    <div class="test-out" id="testout" hidden></div>
+  </div>
+
+  <div class="board">
+    <div class="col">
+      <section class="lane" id="lane-ready" style="--c:var(--ready)"></section>
+      <section class="lane" id="lane-draft" style="--c:var(--draft)"></section>
+    </div>
+    <div class="col">
+      <section class="lane" id="lane-review" style="--c:var(--review)"></section>
+      <section class="lane" id="lane-other" style="--c:var(--other)"></section>
+    </div>
+  </div>
+
+  <p class="kbd"><kbd>r</kbd> 更新 &nbsp; <kbd>s</kbd> 設定</p>
+</div>
+
+<script>
+const DEFAULTS = {
+  token: "",
+  mates: "octocat",
+  repos: "example-org/repo-a\nexample-org/repo-b\nexample-org/repo-c",
+  interval: 60
+};
+const KEY = "pr-radar:config";
+
+const LANES = [
+  { id: "ready",  rail: "待ち",   title: "自分たちのPR — レビュー待ち", sub: "出してある、動きが要るもの" },
+  { id: "draft",  rail: "下書",   title: "自分たちのPR — Draft",       sub: "作業中。放置してないか確認用" },
+  { id: "review", rail: "依頼",   title: "自分にレビュー依頼が来ている", sub: "Reviewer に指名されているもの" },
+  { id: "other",  rail: "他",     title: "ほかの人のPR",                sub: "3リポジトリで今開いている残り全部" }
+];
+
+let cfg = { ...DEFAULTS };
+let timer = null;
+
+/* ---------- storage (localStorage) ---------- */
+function loadConfig() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); }
+  catch (e) { /* 壊れていたら既定値で始める */ }
+  cfg = saved ? { ...DEFAULTS, ...saved } : { ...DEFAULTS };
+}
+function saveConfig() {
+  try { localStorage.setItem(KEY, JSON.stringify(cfg)); }
+  catch (e) {
+    showAlert("設定を保存できませんでした",
+      "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
+  }
+}
+
+/* ---------- helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function timeAgo(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "たった今";
+  if (s < 3600) return Math.floor(s / 60) + "分前";
+  if (s < 86400) return Math.floor(s / 3600) + "時間前";
+  const d = Math.floor(s / 86400);
+  return d < 30 ? d + "日前" : Math.floor(d / 30) + "か月前";
+}
+const daysOld = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+
+function showAlert(title, body) {
+  $("alert").innerHTML = "<b>" + esc(title) + "</b>" + body;
+  $("alert").hidden = false;
+}
+const clearAlert = () => { $("alert").hidden = true; };
+
+/* ---------- github ---------- */
+async function gh(path, token) {
+  const res = await fetch("https://api.github.com" + path, {
+    headers: {
+      Authorization: "Bearer " + (token || cfg.token),
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+  const remaining = res.headers.get("x-ratelimit-remaining");
+  if (remaining !== null) gh.remaining = remaining;
+  if (!res.ok) {
+    const err = new Error("HTTP " + res.status);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+async function refresh() {
+  const repos = cfg.repos.split("\n").map((s) => s.trim()).filter(Boolean);
+  $("scope").textContent = repos.length ? repos.map((r) => r.split("/")[1]).join(" · ") : "リポジトリ未設定";
+
+  if (!cfg.token) {
+    showAlert("アクセストークンがまだ入っていません",
+      "設定を開いてトークンを入れると、プライベートリポジトリのPRが読めるようになります。");
+    $("settings").hidden = false;
+    LANES.forEach((l) => renderLane(l, null, "トークンを入れると表示されます"));
+    return;
+  }
+
+  $("status").textContent = "読み込み中…";
+  let me;
+  try {
+    me = (await gh("/user")).login.toLowerCase();
+  } catch (e) {
+    $("status").textContent = "停止中";
+    showAlert(e.status === 401 ? "トークンが無効です" : "GitHubに接続できませんでした",
+      e.status === 401
+        ? "設定から入れ直してください。期限切れか、スコープに <code>repo</code> が入っていない可能性があります。"
+        : "少し待ってから更新を押してください。");
+    return;
+  }
+
+  const mates = cfg.mates.split(/[,\s]+/).filter(Boolean).map((s) => s.replace(/^@/, "").toLowerCase());
+  const ours = new Set([me, ...mates]);
+
+  const buckets = { ready: [], draft: [], review: [], other: [] };
+  const failed = [];
+
+  const results = await Promise.all(repos.map(async (r) => {
+    try { return await gh("/repos/" + r + "/pulls?state=open&per_page=100&sort=updated&direction=desc"); }
+    catch (e) { failed.push(r + (e.status === 404 ? "（見つからない／権限なし）" : "（" + e.message + "）")); return []; }
+  }));
+
+  for (const list of results) {
+    for (const pr of list) {
+      const author = (pr.user && pr.user.login || "").toLowerCase();
+      const reviewers = (pr.requested_reviewers || []).map((u) => u.login.toLowerCase());
+      let lane;
+      if (reviewers.includes(me)) lane = "review";
+      else if (ours.has(author)) lane = pr.draft ? "draft" : "ready";
+      else lane = "other";
+      buckets[lane].push(pr);
+    }
+  }
+  for (const k in buckets) buckets[k].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  LANES.forEach((l) => renderLane(l, buckets[l.id]));
+
+  if (failed.length) showAlert("読めなかったリポジトリがあります", esc(failed.join(" / ")));
+  else clearAlert();
+
+  const t = new Date();
+  const hh = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+  $("status").innerHTML = "更新 <b>" + hh + "</b>" + (gh.remaining ? " · 残 " + gh.remaining : "");
+}
+
+/* ---------- render ---------- */
+function renderLane(lane, prs, emptyMsg) {
+  const n = prs ? prs.length : 0;
+  const rows = prs && prs.length
+    ? prs.map((pr) => prRow(pr)).join("")
+    : '<p class="empty">' + esc(emptyMsg || "いまは空です。") + "</p>";
+
+  $("lane-" + lane.id).innerHTML =
+    '<div class="rail"><span class="n">' + (prs ? n : "–") + '</span><span class="lbl">' + lane.rail + "</span></div>" +
+    '<div class="lane-body">' +
+      '<div class="lane-head"><h2>' + esc(lane.title) + '</h2><span class="sub">' + esc(lane.sub) + "</span></div>" +
+      rows +
+    "</div>";
+}
+
+function prRow(pr) {
+  const repo = pr.base.repo.name;
+  const age = daysOld(pr.updated_at);
+  const chips = [];
+  if (pr.draft) chips.push('<span class="chip draft">draft</span>');
+  if (age >= 14) chips.push('<span class="chip rot">' + age + "日 停滞</span>");
+  else if (age >= 7) chips.push('<span class="chip stale">' + age + "日 停滞</span>");
+  (pr.labels || []).slice(0, 2).forEach((l) => {
+    chips.push('<span class="chip label">' + esc(l.name) + "</span>");
+  });
+
+  return '<a class="pr" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' +
+    '<span class="t">' + esc(pr.title) + "</span>" +
+    '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
+    '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
+      '<span class="sep">|</span>' + timeAgo(pr.updated_at) +
+      (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
+    "</span></a>";
+}
+
+/* ---------- wiring ---------- */
+function fillForm() {
+  $("token").value = cfg.token;
+  $("mates").value = cfg.mates;
+  $("repos").value = cfg.repos;
+  $("interval").value = cfg.interval;
+}
+function schedule() {
+  if (timer) clearInterval(timer);
+  const s = Number(cfg.interval);
+  if (s >= 15) timer = setInterval(refresh, s * 1000);
+}
+
+$("toggle").onclick = () => { $("settings").hidden = !$("settings").hidden; };
+$("refresh").onclick = refresh;
+$("save").onclick = () => {
+  cfg = {
+    token: $("token").value.trim(),
+    mates: $("mates").value.trim(),
+    repos: $("repos").value.trim(),
+    interval: Number($("interval").value) || 0
+  };
+  saveConfig();
+  $("testout").hidden = true;
+  $("settings").hidden = true;
+  schedule();
+  refresh();
+};
+$("forget").onclick = () => {
+  cfg.token = "";
+  $("token").value = "";
+  saveConfig();
+  refresh();
+};
+
+$("test").onclick = async () => {
+  const out = $("testout");
+  const token = $("token").value.trim();
+  const repos = $("repos").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  const mates = $("mates").value.split(/[,\s]+/).filter(Boolean).map((s) => s.replace(/^@/, ""));
+  const lines = [];
+  const row = (cls, mark, text) =>
+    lines.push('<div><span class="mark ' + cls + '">' + mark + "</span><span>" + esc(text) + "</span></div>");
+  const paint = () => { out.innerHTML = lines.join(""); };
+
+  out.hidden = false;
+  out.innerHTML = '<div><span class="mark wait">·</span><span>確認中…</span></div>';
+
+  if (!token) { row("ng", "×", "トークンが空です。入力してからもう一度押してください。"); paint(); return; }
+
+  let me;
+  try {
+    me = (await gh("/user", token)).login;
+    row("ok", "○", "認証できました — @" + me);
+  } catch (e) {
+    row("ng", "×", e.status === 401
+      ? "トークンが無効か期限切れです。発行し直してください。"
+      : "GitHubに接続できません（" + e.message + "）");
+    paint(); return;
+  }
+  paint();
+
+  for (const m of mates) {
+    try {
+      const u = await gh("/users/" + m, token);
+      row("ok", "○", "一緒に見る人 — @" + u.login);
+    } catch (e) {
+      row("ng", "×", "@" + m + " が見つかりません。GitHub IDの綴りを確認してください。");
+    }
+    paint();
+  }
+
+  for (const r of repos) {
+    try {
+      const prs = await gh("/repos/" + r + "/pulls?state=open&per_page=100", token);
+      row("ok", "○", r + " — 開いているPR " + prs.length + "件");
+    } catch (e) {
+      row("ng", "×", r + " — " + (
+        e.status === 404 ? "見つかりません。リポジトリ名か、トークンの対象リポジトリに入っているか確認してください。" :
+        e.status === 403 ? "権限が足りません。Pull requests: Read か、SSOの認可を確認してください。" :
+        e.message));
+    }
+    paint();
+  }
+
+  if (gh.remaining) row("wait", "·", "1時間あたりの残り呼び出し回数 " + gh.remaining);
+  paint();
+};
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if (e.key === "r") refresh();
+  if (e.key === "s") $("settings").hidden = !$("settings").hidden;
+});
+
+(async () => {
+  loadConfig();
+  fillForm();
+  schedule();
+  refresh();
+})();
+</script>
