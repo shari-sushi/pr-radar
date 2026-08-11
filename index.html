@@ -186,8 +186,8 @@
   <div class="settings" id="settings" hidden>
     <div class="field">
       <label for="token">アクセストークン</label>
-      <input id="token" type="password" placeholder="ghp_..." autocomplete="off" spellcheck="false">
-      <span class="hint">GitHub の Settings → Developer settings → Personal access tokens (classic) で <code>repo</code> にチェックして発行。SSO必須の組織なら発行後に Configure SSO で example-org を認可する。</span>
+      <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+      <span class="hint">GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens で発行。Resource owner を example-org、Repository access を対象の3つ、権限は <code>Pull requests: Read-only</code> だけ。org の設定によっては承認待ちになる。classic token の <code>repo</code> は書き込み権限も含むので使わない。</span>
     </div>
     <div class="field">
       <label for="mates">一緒に見る人</label>
