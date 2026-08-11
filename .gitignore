@@ -1,3 +1,6 @@
 .DS_Store
 Thumbs.db
 *.local.html
+
+# トークンを暗号化する鍵。端末ごとに run.sh が生成する。絶対にコミットしない。
+key.js

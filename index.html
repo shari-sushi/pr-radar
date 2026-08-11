@@ -69,6 +69,8 @@
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
   .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.45; }
+  .field .hint.warn { color: var(--review); }
+  .field .hint.warn[hidden] { display: none; }
   .field input, .field textarea {
     font-family: var(--mono); font-size: 12.5px;
     padding: 7px 9px; border: 1px solid var(--line); border-radius: 2px;
@@ -188,6 +190,7 @@
       <label for="token">アクセストークン</label>
       <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
       <span class="hint">GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens で発行。Resource owner を example-org、Repository access を対象の3つ、権限は <code>Pull requests: Read-only</code> だけ。org の設定によっては承認待ちになる。classic token の <code>repo</code> は書き込み権限も含むので使わない。</span>
+      <span class="hint warn" id="cryptonote" hidden></span>
     </div>
     <div class="field">
       <label for="mates">一緒に見る人</label>
@@ -208,7 +211,7 @@
       <button class="save" id="save">保存して更新</button>
       <button id="test">接続テスト</button>
       <button id="forget">トークンを消す</button>
-      <span class="note">設定はこのブラウザに保存されます。読み取り専用のトークンを使ってください。</span>
+      <span class="note">設定はこのブラウザに保存されます（トークンは <code>key.js</code> の鍵で暗号化）。読み取り専用のトークンを使ってください。</span>
     </div>
     <div class="test-out" id="testout" hidden></div>
   </div>
@@ -227,6 +230,8 @@
   <p class="kbd"><kbd>r</kbd> 更新 &nbsp; <kbd>s</kbd> 設定</p>
 </div>
 
+<!-- この端末だけにある暗号鍵。run.sh が初回起動時に作る。git 管理外。 -->
+<script src="key.js"></script>
 <script>
 const DEFAULTS = {
   token: "",
@@ -247,15 +252,74 @@ let cfg = { ...DEFAULTS };
 let timer = null;
 
 /* ---------- storage (localStorage) ---------- */
-function loadConfig() {
+/* 設定は平文で置くが、トークンだけは key.js の鍵で暗号化して別キーに分ける。
+   key.js は git 管理外・この端末だけにあり、pr-radar を配信していないときは
+   HTTP 越しに取得できない。あとから同じポートを別プロジェクトが使っても、
+   拾えるのは復号できない暗号文だけ、という前提の作り。 */
+const TOKEN_KEY = "pr-radar:token";
+
+let cryptoKey = null;  // CryptoKey。使えないときは null
+let cryptoNote = "";   // 鍵が使えない理由。設定画面のトークン欄に出す
+let tokenNote = "";    // トークンが読めなかったときの補足
+
+async function initCrypto() {
+  if (!window.crypto || !crypto.subtle) {
+    cryptoNote = "安全なコンテキストで開かれていないため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動して http://127.0.0.1:49787/ から開いてください。";
+    return;
+  }
+  const hex = window.PR_RADAR_KEY;
+  if (typeof hex !== "string" || !/^[0-9a-f]{64}$/i.test(hex)) {
+    cryptoNote = "key.js が無いか壊れているため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動すると自動生成されます。";
+    return;
+  }
+  const raw = Uint8Array.from(hex.match(/../g), (h) => parseInt(h, 16));
+  cryptoKey = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+
+async function encryptToken(text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const body = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, new TextEncoder().encode(text));
+  const packed = new Uint8Array(iv.length + body.byteLength);
+  packed.set(iv);
+  packed.set(new Uint8Array(body), iv.length);
+  return btoa(String.fromCharCode(...packed));
+}
+
+async function decryptToken(packed) {
+  const raw = Uint8Array.from(atob(packed), (c) => c.charCodeAt(0));
+  const body = await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, cryptoKey, raw.slice(12));
+  return new TextDecoder().decode(body);
+}
+
+async function loadConfig() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); }
   catch (e) { /* 壊れていたら既定値で始める */ }
-  cfg = saved ? { ...DEFAULTS, ...saved } : { ...DEFAULTS };
+  cfg = saved ? { ...DEFAULTS, ...saved, token: "" } : { ...DEFAULTS };
+
+  if (saved && saved.token) {
+    // 平文で保存していた頃の設定。暗号化して保存し直し、平文を消す
+    cfg.token = saved.token;
+    await saveConfig();
+    return;
+  }
+  const packed = cryptoKey && localStorage.getItem(TOKEN_KEY);
+  if (!packed) return;
+  try {
+    cfg.token = await decryptToken(packed);
+  } catch (e) {
+    localStorage.removeItem(TOKEN_KEY);
+    tokenNote = "保存されていたトークンを復号できませんでした。key.js が作り直されたのかもしれません。入れ直してください。";
+  }
 }
-function saveConfig() {
-  try { localStorage.setItem(KEY, JSON.stringify(cfg)); }
-  catch (e) {
+
+async function saveConfig() {
+  const { token, ...rest } = cfg;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(rest));
+    if (token && cryptoKey) localStorage.setItem(TOKEN_KEY, await encryptToken(token));
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch (e) {
     showAlert("設定を保存できませんでした",
       "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
   }
@@ -305,8 +369,8 @@ async function refresh() {
   $("scope").textContent = repos.length ? repos.map((r) => r.split("/")[1]).join(" · ") : "リポジトリ未設定";
 
   if (!cfg.token) {
-    showAlert("アクセストークンがまだ入っていません",
-      "設定を開いてトークンを入れると、プライベートリポジトリのPRが読めるようになります。");
+    showAlert(tokenNote ? "トークンを読み込めませんでした" : "アクセストークンがまだ入っていません",
+      tokenNote || "設定を開いてトークンを入れると、プライベートリポジトリのPRが読めるようになります。");
     $("settings").hidden = false;
     LANES.forEach((l) => renderLane(l, null, "トークンを入れると表示されます"));
     return;
@@ -409,23 +473,25 @@ function schedule() {
 
 $("toggle").onclick = () => { $("settings").hidden = !$("settings").hidden; };
 $("refresh").onclick = refresh;
-$("save").onclick = () => {
+$("save").onclick = async () => {
   cfg = {
     token: $("token").value.trim(),
     mates: $("mates").value.trim(),
     repos: $("repos").value.trim(),
     interval: Number($("interval").value) || 0
   };
-  saveConfig();
+  tokenNote = "";
+  await saveConfig();
   $("testout").hidden = true;
   $("settings").hidden = true;
   schedule();
   refresh();
 };
-$("forget").onclick = () => {
+$("forget").onclick = async () => {
   cfg.token = "";
   $("token").value = "";
-  saveConfig();
+  tokenNote = "";
+  await saveConfig();
   refresh();
 };
 
@@ -490,7 +556,12 @@ document.addEventListener("keydown", (e) => {
 });
 
 (async () => {
-  loadConfig();
+  await initCrypto();
+  if (cryptoNote) {
+    $("cryptonote").textContent = cryptoNote;
+    $("cryptonote").hidden = false;
+  }
+  await loadConfig();
   fillForm();
   schedule();
   refresh();
