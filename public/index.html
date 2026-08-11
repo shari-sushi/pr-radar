@@ -112,7 +112,7 @@
     background: var(--panel); border-left: 1px solid var(--line);
     /* 上の余白は .wrap と揃える。開いたとき ✕ が ☰ とほぼ同じ高さに出る */
     padding: 20px 18px 24px;
-    display: grid; gap: 16px; align-content: start;
+    display: grid; gap: 20px; align-content: start;
     overflow-y: auto; overscroll-behavior: contain;
     transform: translateX(100%); visibility: hidden;
     transition: transform .18s ease, visibility .18s;
@@ -131,7 +131,16 @@
   /* ✕ は ☰ と同じ寸法。グリフが小さいと箱まで小さく見えるので少し大きめ */
   .drawer-head button { width: 30px; height: var(--btn-h); padding: 0; font-size: 14px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
-  .field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  /* セクション見出し。直接の子だけ（.people の中のラベルは対象外） */
+  .field > label {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+    margin-bottom: 2px;
+  }
+  .field > label::after {
+    content: ""; flex: 1 1 auto; height: 1px; background: var(--line);
+  }
   .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.45; }
   .field .hint.warn { color: var(--review); }
   .field .hint.warn[hidden] { display: none; }
@@ -288,15 +297,15 @@
       <div class="people" id="people"></div>
     </div>
     <div class="field">
-      <label for="repos">対象リポジトリ</label>
+      <label for="repos">リポジトリ</label>
       <textarea id="repos" rows="3" spellcheck="false"></textarea>
       <span class="hint">owner/repo を1行ずつ。下のトグルは開いたときに表示するリポジトリで、ヘッダーのトグルはその場かぎりの絞り込み。</span>
       <div class="repo-toggles" id="repofilter"></div>
     </div>
     <div class="field">
-      <label for="interval">自動更新（秒）</label>
+      <label for="interval">自動更新</label>
       <input id="interval" type="number" min="15" step="15">
-      <span class="hint">0 で自動更新を止める。</span>
+      <span class="hint">秒。0 で自動更新を止める。</span>
     </div>
     <div class="actions">
       <button class="save" id="save">保存して更新</button>
