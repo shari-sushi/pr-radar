@@ -48,6 +48,9 @@
   .top .spacer { flex: 1 1 auto; }
   .status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); letter-spacing: .03em; }
   .status b { color: var(--dim); font-weight: 500; }
+  /* 文字は baseline で揃えたいが、ボタンは箱として中央で揃える。
+     ☰ は中にテキストが無く baseline を持たないので、baseline のままだと下端で揃って落ちる */
+  .top button { align-self: center; }
 
   button {
     font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
@@ -62,7 +65,9 @@
   /* ---------- hamburger ---------- */
   .burger {
     display: inline-flex; flex-direction: column; justify-content: center; gap: 3px;
-    width: 32px; height: 26px; padding: 0 7px;
+    width: 30px; padding: 0 8px;
+    /* 文字のあるボタンと同じ高さにする（本文1行 + 上下 padding 5px + 枠 1px） */
+    height: calc(1.5em + 12px);
   }
   .burger span {
     display: block; height: 1.5px; background: currentColor;
@@ -85,7 +90,8 @@
     position: fixed; top: 0; right: 0; bottom: 0; z-index: 11;
     width: min(420px, 100%);
     background: var(--panel); border-left: 1px solid var(--line);
-    padding: 16px 18px 24px;
+    /* 上の余白は .wrap と揃える。開いたとき ✕ が ☰ とほぼ同じ高さに出る */
+    padding: 20px 18px 24px;
     display: grid; gap: 16px; align-content: start;
     overflow-y: auto; overscroll-behavior: contain;
     transform: translateX(100%); visibility: hidden;
@@ -102,7 +108,8 @@
     margin: 0; font-family: var(--mono); font-weight: 700;
     font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim);
   }
-  .drawer-head button { padding: 3px 8px; }
+  /* ✕ は ☰ と同じ寸法にする。ボタンは中身を自動で中央に置く */
+  .drawer-head button { width: 30px; height: calc(1.5em + 12px); padding: 0; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
   .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.45; }
