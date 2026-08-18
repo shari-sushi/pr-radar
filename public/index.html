@@ -322,7 +322,7 @@
     <div class="field">
       <label for="repos">リポジトリ</label>
       <textarea id="repos" rows="3" spellcheck="false"></textarea>
-      <span class="hint">owner/repo を1行ずつ。下のトグルは開いたときに表示するリポジトリで、ヘッダーのトグルはその場かぎりの絞り込み。</span>
+      <span class="hint">owner/repo を1行ずつ。下のトグルはヘッダーのものと同じ絞り込みで、押した時点で盤面に反映される（次に開いたときも残すには保存）。</span>
       <div class="repo-toggles" id="repofilter"></div>
     </div>
     <div class="field">
@@ -588,6 +588,14 @@ let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
 const hiddenRepos = new Set();
 
+/* リポジトリの絞り込みは hiddenRepos ひとつ。ヘッダーと設定は同じものを
+   別の場所から触っているだけなので、どちらを押しても両方を描き直す */
+function syncRepos() {
+  renderScope();
+  renderRepoFilter();
+  renderBoard();
+}
+
 /* リポジトリ名のトグル。押されているものだけ盤面に出す */
 function renderScope() {
   const box = $("scope");
@@ -606,8 +614,7 @@ function renderScope() {
     b.onclick = () => {
       if (hiddenRepos.has(repo)) hiddenRepos.delete(repo);
       else hiddenRepos.add(repo);
-      renderScope();
-      renderBoard();
+      syncRepos();
     };
     box.append(b);
   }
@@ -862,9 +869,6 @@ function renderPeople() {
   }
 }
 
-/* 初期表示のリポジトリ。保存するまでは画面側だけで持つ */
-let repoOff = new Set();
-
 function renderRepoFilter() {
   const box = $("repofilter");
   box.textContent = "";
@@ -882,11 +886,11 @@ function renderRepoFilter() {
     b.className = "repo";
     b.textContent = repo.split("/")[1] || repo;
     b.title = repo;
-    b.setAttribute("aria-pressed", String(!repoOff.has(repo)));
+    b.setAttribute("aria-pressed", String(!hiddenRepos.has(repo)));
     b.onclick = () => {
-      if (repoOff.has(repo)) repoOff.delete(repo);
-      else repoOff.add(repo);
-      renderRepoFilter();
+      if (hiddenRepos.has(repo)) hiddenRepos.delete(repo);
+      else hiddenRepos.add(repo);
+      syncRepos();
     };
     box.append(b);
   }
@@ -921,7 +925,6 @@ function fillForm() {
   $("repos").value = cfg.repos;
   $("interval").value = cfg.interval;
   peopleOff = new Set(cfg.off || []);
-  repoOff = new Set(cfg.hidden || []);
   laneOff = new Set(cfg.lanes || []);
   renderPeople();
   renderRepoFilter();
@@ -943,7 +946,7 @@ function setSettings(open) {
   (open ? $("token") : $("toggle")).focus();
 }
 
-$("showall").onclick = () => { hiddenRepos.clear(); renderScope(); renderBoard(); };
+$("showall").onclick = () => { hiddenRepos.clear(); syncRepos(); };
 $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
 $("scrim").onclick = () => setSettings(false);
@@ -956,7 +959,7 @@ $("save").onclick = async () => {
   const live = new Set(peopleList().map((p) => p.key));
   peopleOff = new Set([...peopleOff].filter((key) => live.has(key)));
   const liveRepos = new Set($("repos").value.split("\n").map((s) => s.trim()).filter(Boolean));
-  repoOff = new Set([...repoOff].filter((repo) => liveRepos.has(repo)));
+  for (const repo of [...hiddenRepos]) if (!liveRepos.has(repo)) hiddenRepos.delete(repo);
   cfg = {
     token: $("token").value.trim(),
     mates: $("mates").value.trim(),
@@ -964,12 +967,9 @@ $("save").onclick = async () => {
     interval: Number($("interval").value) || 0,
     me: cfg.me,
     off: [...peopleOff],
-    hidden: [...repoOff],
+    hidden: [...hiddenRepos],
     lanes: [...laneOff]
   };
-  // 初期値を変えたら、いまの絞り込みもそこへ揃える
-  hiddenRepos.clear();
-  for (const repo of repoOff) hiddenRepos.add(repo);
   tokenNote = "";
   await saveConfig();
   $("testout").hidden = true;
