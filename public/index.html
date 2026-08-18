@@ -316,7 +316,7 @@
     <div class="field">
       <label for="mates">Author</label>
       <input id="mates" placeholder="octocat" autocomplete="off" spellcheck="false">
-      <span class="hint">自分以外で追う人の GitHub ID。複数ならカンマ区切り。チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。ここに載せていない人の PR は「ほかの人のPR」に回る。</span>
+      <span class="hint">自分以外で追う人の GitHub ID。複数ならカンマ区切り。チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。ここに載せていない人の PR は「ほかの人のPR」に回る。切り替えた時点で盤面に反映される（次に開いたときも残すには保存）。</span>
       <div class="people" id="people"></div>
     </div>
     <div class="field">
@@ -327,7 +327,7 @@
     </div>
     <div class="field">
       <label>レーン</label>
-      <span class="hint">盤面に出すレーン。外したものは丸ごと消える。</span>
+      <span class="hint">盤面に出すレーン。外したものは丸ごと消える。切り替えた時点で反映される（次に開いたときも残すには保存）。</span>
       <div class="repo-toggles" id="lanefilter"></div>
     </div>
     <div class="field">
@@ -584,7 +584,7 @@ async function fetchCounts(repos) {
 }
 
 /* 直近の取得結果。フィルタはこれを絞り直すだけで、取り直しはしない */
-let fetched = null;    // [{ repo, lane, pr }] | null
+let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
 const hiddenRepos = new Set();
 
@@ -613,13 +613,33 @@ function renderScope() {
   }
 }
 
-/* 取得済みの結果をフィルタしてレーンに流し込む */
+/* PR をどのレーンに置くか。null なら盤面に出さない */
+function laneOf(pr, me, listed, ours) {
+  const author = (pr.user && pr.user.login || "").toLowerCase();
+  const reviewers = (pr.requested_reviewers || []).map((u) => u.login.toLowerCase());
+  // 自分宛のレビュー依頼だけはチェックと無関係。誰が出した PR でも必ず拾う
+  if (me && reviewers.includes(me)) return "review";
+  if (ours.has(author)) return pr.draft ? "draft" : "ready";
+  // 一覧に居てチェックを外した人は「見ない」という意思表示なので落とす。
+  // 一覧に載せていない人は意思表示が無いだけなので「ほかの人のPR」に回す
+  if (listed.has(author)) return null;
+  return "other";
+}
+
+/* 取得済みの結果をフィルタしてレーンに流し込む。
+   author の振り分けもここでやる。取り直さずにチェックへ即応させるため */
 function renderBoard() {
   if (!fetched) return;
+  const me = (cfg.me || "").toLowerCase();
+  const listed = new Set(peopleList().map((p) => p.key));               // Author 欄に並んでいる人
+  const ours = new Set([...listed].filter((k) => !peopleOff.has(k)));   // うちチェックが入っている人
+
   const buckets = { ready: [], draft: [], review: [], other: [] };
   for (const item of fetched) {
     if (hiddenRepos.has(item.repo)) continue;
-    buckets[item.lane].push(item.pr);
+    const lane = laneOf(item.pr, me, listed, ours);
+    if (!lane) continue;
+    buckets[lane].push(item.pr);
   }
   for (const k in buckets) buckets[k].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
@@ -642,10 +662,9 @@ async function refresh() {
   }
 
   $("status").textContent = "読み込み中…";
-  let me, meRaw;
+  let meRaw;
   try {
     meRaw = (await gh("/user")).login;
-    me = meRaw.toLowerCase();
   } catch (e) {
     $("status").textContent = "停止中";
     showAlert(e.status === 401 ? "トークンが無効です" : "GitHubに接続できませんでした",
@@ -662,11 +681,6 @@ async function refresh() {
     renderPeople();
   }
 
-  const mates = cfg.mates.split(/[,\s]+/).filter(Boolean).map((s) => s.replace(/^@/, "").toLowerCase());
-  const off = new Set(cfg.off || []);
-  const listed = new Set([me, ...mates]);                                     // Author 欄に並んでいる人
-  const ours = new Set([...listed].filter((login) => !off.has(login)));       // うちチェックが入っている人
-
   const failed = [];
 
   // 一覧（REST）とコメント数（GraphQL）は互いに独立なので、並べて投げて待ち時間を重ねる
@@ -679,22 +693,12 @@ async function refresh() {
     fetchCounts(repos).catch(() => new Map())
   ]);
 
-  // どのリポジトリから来た PR かを持たせておく。フィルタはこれを見る
+  // どのリポジトリから来た PR かを持たせておく。振り分けは renderBoard がやる
   fetched = [];
   results.forEach((list, i) => {
     for (const pr of list) {
-      const author = (pr.user && pr.user.login || "").toLowerCase();
-      const reviewers = (pr.requested_reviewers || []).map((u) => u.login.toLowerCase());
-      let lane;
-      // 自分宛のレビュー依頼だけはチェックと無関係。誰が出した PR でも必ず拾う
-      if (reviewers.includes(me)) lane = "review";
-      else if (ours.has(author)) lane = pr.draft ? "draft" : "ready";
-      // 一覧に居てチェックを外した人は「見ない」という意思表示なので、盤面から落とす。
-      // 一覧に載せていない人は、そもそも意思表示が無いので「ほかの人のPR」に回す
-      else if (listed.has(author)) continue;
-      else lane = "other";
       pr.counts = counts.get(repos[i] + "#" + pr.number) || null;
-      fetched.push({ repo: repos[i], lane, pr });
+      fetched.push({ repo: repos[i], pr });
     }
   });
 
@@ -712,8 +716,7 @@ async function refresh() {
 /* 外したレーンは要素ごと消す。列が空になったらその列も消し、
    残りが1列だけになったら盤面を1列に切り替える */
 function syncLanes() {
-  const off = new Set(cfg.lanes || []);
-  for (const l of LANES) $("lane-" + l.id).hidden = off.has(l.id);
+  for (const l of LANES) $("lane-" + l.id).hidden = laneOff.has(l.id);
   const cols = [...document.querySelectorAll("#board > .col")];
   for (const col of cols) col.hidden = [...col.children].every((el) => el.hidden);
   $("board").classList.toggle("one", cols.filter((c) => !c.hidden).length === 1);
@@ -844,6 +847,7 @@ function renderPeople() {
     box2.onchange = () => {
       if (box2.checked) peopleOff.delete(person.key);
       else peopleOff.add(person.key);
+      renderBoard();
     };
     const name = document.createElement("span");
     name.textContent = "@" + person.login;
@@ -905,6 +909,7 @@ function renderLaneFilter() {
       if (laneOff.has(lane.id)) laneOff.delete(lane.id);
       else laneOff.add(lane.id);
       renderLaneFilter();
+      syncLanes();
     };
     box.append(b);
   }
@@ -943,7 +948,7 @@ $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
 $("scrim").onclick = () => setSettings(false);
 $("refresh").onclick = refresh;
-$("mates").oninput = renderPeople;
+$("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
 
 $("save").onclick = async () => {
