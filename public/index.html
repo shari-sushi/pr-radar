@@ -316,7 +316,7 @@
     <div class="field">
       <label for="mates">Author</label>
       <input id="mates" placeholder="octocat" autocomplete="off" spellcheck="false">
-      <span class="hint">自分以外で追う人の GitHub ID。複数ならカンマ区切り。チェックを入れた人の PR だけ「自分たちのPR」に出る。外した人は「ほかの人のPR」に回る。</span>
+      <span class="hint">自分以外で追う人の GitHub ID。複数ならカンマ区切り。チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。ここに載せていない人の PR は「ほかの人のPR」に回る。</span>
       <div class="people" id="people"></div>
     </div>
     <div class="field">
@@ -664,7 +664,8 @@ async function refresh() {
 
   const mates = cfg.mates.split(/[,\s]+/).filter(Boolean).map((s) => s.replace(/^@/, "").toLowerCase());
   const off = new Set(cfg.off || []);
-  const ours = new Set([me, ...mates].filter((login) => !off.has(login)));
+  const listed = new Set([me, ...mates]);                                     // Author 欄に並んでいる人
+  const ours = new Set([...listed].filter((login) => !off.has(login)));       // うちチェックが入っている人
 
   const failed = [];
 
@@ -685,8 +686,12 @@ async function refresh() {
       const author = (pr.user && pr.user.login || "").toLowerCase();
       const reviewers = (pr.requested_reviewers || []).map((u) => u.login.toLowerCase());
       let lane;
+      // 自分宛のレビュー依頼だけはチェックと無関係。誰が出した PR でも必ず拾う
       if (reviewers.includes(me)) lane = "review";
       else if (ours.has(author)) lane = pr.draft ? "draft" : "ready";
+      // 一覧に居てチェックを外した人は「見ない」という意思表示なので、盤面から落とす。
+      // 一覧に載せていない人は、そもそも意思表示が無いので「ほかの人のPR」に回す
+      else if (listed.has(author)) continue;
       else lane = "other";
       pr.counts = counts.get(repos[i] + "#" + pr.number) || null;
       fetched.push({ repo: repos[i], lane, pr });
