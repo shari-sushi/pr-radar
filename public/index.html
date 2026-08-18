@@ -252,6 +252,9 @@
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;
   }
   .pr .m .sep { color: var(--line); }
+  /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
+  .pr .m .cnt { display: inline-flex; gap: 8px; font-variant-numeric: tabular-nums; }
+  .pr .m .cnt .z { color: var(--faint); }
   .chip {
     font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
     padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.5;
@@ -505,6 +508,71 @@ async function gh(path, token) {
   return res.json();
 }
 
+/* REST の PR 一覧にはコメント数が入っていない（単体 GET にしか無い）。
+   PR ごとに叩くと N+1 になるので、数だけは GraphQL で全リポジトリぶんを1リクエストにまとめる。 */
+async function ghGraphQL(query, variables) {
+  const res = await fetch("https://api.github.com/graphql", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + cfg.token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ query, variables })
+  });
+  if (!res.ok) {
+    const err = new Error("HTTP " + res.status);
+    err.status = res.status;
+    throw err;
+  }
+  // 一部のリポジトリだけ権限が無い場合、errors と一緒に残りの data も返ってくる
+  return res.json();
+}
+
+/* open PR のコメント数を "owner/repo#番号" -> { comments, reviews, inline } で返す。
+   リポジトリ名は利用者の入力なのでクエリ本文に埋めず、変数で渡す。
+   alias（r0, r1, …）はこちらで作る名前なので埋めてよい。 */
+async function fetchCounts(repos) {
+  const out = new Map();
+  if (!repos.length) return out;
+
+  const vars = {};
+  const params = [];
+  const fields = [];
+  repos.forEach((r, i) => {
+    const cut = r.indexOf("/");
+    vars["o" + i] = r.slice(0, cut);
+    vars["n" + i] = r.slice(cut + 1);
+    params.push("$o" + i + ":String!,$n" + i + ":String!");
+    fields.push("r" + i + ":repository(owner:$o" + i + ",name:$n" + i + "){...counts}");
+  });
+
+  // totalCount は接続のカウンタなので、コメント本体を引かずに数だけ取れる（＝安い）
+  const query =
+    "query(" + params.join(",") + "){" + fields.join(" ") + "}" +
+    "fragment counts on Repository{" +
+      "pullRequests(states:OPEN,first:100,orderBy:{field:UPDATED_AT,direction:DESC}){" +
+        "nodes{number comments{totalCount} reviews{totalCount} reviewThreads{totalCount}}" +
+      "}" +
+    "}";
+
+  const json = await ghGraphQL(query, vars);
+  const data = json && json.data;
+  if (!data) return out;
+
+  repos.forEach((r, i) => {
+    const repo = data["r" + i];   // 読めなかったリポジトリは null で来る
+    if (!repo || !repo.pullRequests) return;
+    for (const n of repo.pullRequests.nodes) {
+      out.set(r + "#" + n.number, {
+        comments: n.comments.totalCount,      // 会話タブのコメント
+        reviews:  n.reviews.totalCount,       // レビュー提出（bot 含む）
+        inline:   n.reviewThreads.totalCount  // 差分に付いたスレッド数
+      });
+    }
+  });
+  return out;
+}
+
 /* 直近の取得結果。フィルタはこれを絞り直すだけで、取り直しはしない */
 let fetched = null;    // [{ repo, lane, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
@@ -590,10 +658,15 @@ async function refresh() {
 
   const failed = [];
 
-  const results = await Promise.all(repos.map(async (r) => {
-    try { return await gh("/repos/" + r + "/pulls?state=open&per_page=100&sort=updated&direction=desc"); }
-    catch (e) { failed.push(r + (e.status === 404 ? "（見つからない／権限なし）" : "（" + e.message + "）")); return []; }
-  }));
+  // 一覧（REST）とコメント数（GraphQL）は互いに独立なので、並べて投げて待ち時間を重ねる
+  const [results, counts] = await Promise.all([
+    Promise.all(repos.map(async (r) => {
+      try { return await gh("/repos/" + r + "/pulls?state=open&per_page=100&sort=updated&direction=desc"); }
+      catch (e) { failed.push(r + (e.status === 404 ? "（見つからない／権限なし）" : "（" + e.message + "）")); return []; }
+    })),
+    // 数が出ないだけで盤面は成り立つ。GraphQL が落ちても空で続ける
+    fetchCounts(repos).catch(() => new Map())
+  ]);
 
   // どのリポジトリから来た PR かを持たせておく。フィルタはこれを見る
   fetched = [];
@@ -605,6 +678,7 @@ async function refresh() {
       if (reviewers.includes(me)) lane = "review";
       else if (ours.has(author)) lane = pr.draft ? "draft" : "ready";
       else lane = "other";
+      pr.counts = counts.get(repos[i] + "#" + pr.number) || null;
       fetched.push({ repo: repos[i], lane, pr });
     }
   });
@@ -675,6 +749,15 @@ function copyText(btn, icon, text) {
   navigator.clipboard.writeText(text).then(() => flash(ICON_DONE, "done"), () => flash(ICON_FAIL, "fail"));
 }
 
+/* comment / review / inline。取れなかった PR では何も出さない */
+function countsHtml(c) {
+  if (!c) return "";
+  const one = (label, n) => '<span class="' + (n ? "" : "z") + '">' + label + ": " + n + "</span>";
+  return '<span class="sep">|</span><span class="cnt">' +
+    one("comment", c.comments) + one("review", c.reviews) + one("inline", c.inline) +
+    "</span>";
+}
+
 function prRow(pr) {
   const repo = pr.base.repo.name;
   const age = daysOld(pr.updated_at);
@@ -691,6 +774,7 @@ function prRow(pr) {
     '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
     '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
       '<span class="sep">|</span>' + timeAgo(pr.updated_at) +
+      countsHtml(pr.counts) +
       (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
     "</span></a>";
 }
