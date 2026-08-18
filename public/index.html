@@ -73,6 +73,9 @@
      ☰ は中にテキストが無く baseline を持たないので、baseline のままだと下端で揃って落ちる。
      見出しの中のボタンとリポジトリのチップは対象外にしたいので直接の子だけ */
   .top > button { align-self: center; height: var(--btn-h); }
+  /* 更新はアイコンだけ。☰ と同じ幅にして並びを揃える */
+  #refresh { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
+  #refresh svg { width: 15px; height: 15px; }
 
   button {
     font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
@@ -213,6 +216,17 @@
   }
   .lane-head h2 { margin: 0; font-size: 13.5px; font-weight: 700; letter-spacing: .01em; }
   .lane-head .sub { font-size: 11.5px; color: var(--faint); }
+  /* 見出しの右端に寄せる。文字は baseline 揃えだがボタンは箱として中央で揃える */
+  .lane-head .acts { margin-left: auto; align-self: center; display: flex; gap: 2px; }
+  .lane-head .copy {
+    display: inline-flex; padding: 5px; line-height: 0;
+    border: 0; border-radius: 3px; color: var(--faint);
+    transition: color .12s, background-color .12s;
+  }
+  .lane-head .copy svg { width: 15px; height: 15px; }
+  .lane-head .copy:hover { color: var(--c); background: #F1F4F5; border: 0; }
+  .lane-head .copy.done { color: var(--c); }
+  .lane-head .copy.fail { color: var(--review); }
 
   .pr {
     display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
@@ -269,7 +283,9 @@
     <span class="scope" id="scope"></span>
     <span class="spacer"></span>
     <span class="status" id="status">読み込み待ち</span>
-    <button id="refresh">更新</button>
+    <button id="refresh" aria-label="更新" title="更新">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
     <button class="burger" id="toggle" aria-label="設定" aria-expanded="false" aria-controls="settings">
       <span></span><span></span><span></span>
     </button>
@@ -344,8 +360,29 @@ const DEFAULTS = {
 };
 const KEY = "pr-radar:config";
 
+/* lucide のアイコン。大きさは CSS 側で決めるので width/height は付けない */
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+const ICON_COPY = SVG + '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+const ICON_DOC = SVG + '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
+const ICON_DONE = SVG + '<path d="M20 6 9 17l-5-5"/></svg>';
+const ICON_FAIL = SVG + '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+
+/* レビュー依頼の下書き。PR一覧はこの文末に足す */
+const REVIEW_TEMPLATE = [
+  "@channel",
+  "plz review these PRs! :bow:",
+  "",
+  "New:",
+  "",
+  "Ready for re-review — Comments addressed:",
+  "",
+  "Still addressing comments:",
+  "",
+  "That's all from me for now — thanks in advance! :pray:"
+].join("\n");
+
 const LANES = [
-  { id: "ready",  rail: "待ち",   title: "自分たちのPR — レビュー待ち", sub: "出してある、動きが要るもの" },
+  { id: "ready",  rail: "待ち",   title: "自分たちのPR — レビュー待ち", sub: "出してある、動きが要るもの", copy: true },
   { id: "draft",  rail: "下書",   title: "自分たちのPR — Draft",       sub: "作業中。放置してないか確認用" },
   { id: "review", rail: "依頼",   title: "自分にレビュー依頼が来ている", sub: "Reviewer に指名されているもの" },
   { id: "other",  rail: "他",     title: "ほかの人のPR",                sub: "3リポジトリで今開いている残り全部" }
@@ -589,12 +626,53 @@ function renderLane(lane, prs, emptyMsg) {
     ? prs.map((pr) => prRow(pr)).join("")
     : '<p class="empty">' + esc(emptyMsg || "いまは空です。") + "</p>";
 
-  $("lane-" + lane.id).innerHTML =
+  // コピーは「いま出ている分」が対象。中身が無いときはボタンを出さない
+  const canCopy = lane.copy && prs && prs.length > 0;
+  const el = $("lane-" + lane.id);
+
+  el.innerHTML =
     '<div class="rail"><span class="n">' + (prs ? n : "–") + '</span><span class="lbl">' + lane.rail + "</span></div>" +
     '<div class="lane-body">' +
-      '<div class="lane-head"><h2>' + esc(lane.title) + '</h2><span class="sub">' + esc(lane.sub) + "</span></div>" +
+      '<div class="lane-head"><h2>' + esc(lane.title) + '</h2><span class="sub">' + esc(lane.sub) + "</span>" +
+        (canCopy
+          ? '<span class="acts">' +
+              '<button class="copy" type="button" data-kind="list" aria-label="この一覧をコピー" title="この一覧をコピー">' + ICON_COPY + "</button>" +
+              '<button class="copy" type="button" data-kind="post" aria-label="レビュー依頼の文面ごとコピー" title="レビュー依頼の文面ごとコピー">' + ICON_DOC + "</button>" +
+            "</span>"
+          : "") +
+      "</div>" +
       rows +
     "</div>";
+
+  if (canCopy) {
+    el.querySelectorAll(".copy").forEach((btn) => {
+      const icon = btn.dataset.kind === "post" ? ICON_DOC : ICON_COPY;
+      btn.onclick = () => copyText(
+        btn,
+        icon,
+        btn.dataset.kind === "post" ? REVIEW_TEMPLATE + "\n\n" + listText(prs) : listText(prs)
+      );
+    });
+  }
+}
+
+/* 一覧のテキスト。1件2行で、1行目はタイトル、2行目は全角スペース下げで URL */
+function listText(prs) {
+  return prs.map((pr) =>
+    "- " + pr.base.repo.name + " #" + pr.number + " " + pr.title + "\n　" + pr.html_url
+  ).join("\n");
+}
+
+/* クリップボードへ入れて、結果を一瞬アイコンで知らせる */
+function copyText(btn, icon, text) {
+  const flash = (mark, cls) => {
+    btn.innerHTML = mark;
+    btn.classList.add(cls);
+    setTimeout(() => { btn.innerHTML = icon; btn.classList.remove(cls); }, 1400);
+  };
+
+  if (!navigator.clipboard) { flash(ICON_FAIL, "fail"); return; }
+  navigator.clipboard.writeText(text).then(() => flash(ICON_DONE, "done"), () => flash(ICON_FAIL, "fail"));
 }
 
 function prRow(pr) {
@@ -829,6 +907,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 (async () => {
+  // 鍵と設定を読む前に、レーンの枠だけ先に出す（真っ白な画面を見せないため）
+  LANES.forEach((l) => renderLane(l, null, "読み込み中…"));
+
   await initCrypto();
   if (cryptoNote) {
     $("cryptonote").textContent = cryptoNote;
