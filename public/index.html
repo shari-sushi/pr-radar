@@ -332,8 +332,9 @@
     </div>
     <div class="field">
       <label for="interval">自動更新</label>
-      <input id="interval" type="number" min="15" step="15">
-      <span class="hint">秒。0 で自動更新を止める。</span>
+      <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false">
+      <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+      <span class="hint" id="intervalout"></span>
     </div>
     <div class="actions">
       <button class="save" id="save">保存して更新</button>
@@ -482,6 +483,70 @@ async function saveConfig() {
 /* ---------- helpers ---------- */
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* 「60*30」のような式を秒にする。eval は使わず、+ - * / と括弧だけを
+   小さな再帰下降で読む。読めなければ null（数値をそのまま渡してもよい） */
+function evalSeconds(src) {
+  const text = String(src == null ? "" : src).trim();
+  if (!text) return null;
+  // 空白も1トークンとして拾う。先に潰すと「60 30」が 6030 になってしまう
+  const raw = text.match(/\d+(?:\.\d+)?|[-+*/()]|\s+/g);
+  // 連結して元に戻らないなら、知らない文字が混じっている
+  if (!raw || raw.join("") !== text) return null;
+  const tokens = raw.filter((x) => !/^\s+$/.test(x));
+
+  let i = 0;
+  const at = () => tokens[i];
+
+  function primary() {
+    if (at() === "-") { i++; const v = primary(); return v === null ? null : -v; }
+    if (at() === "(") {
+      i++;
+      const v = sum();
+      if (v === null || at() !== ")") return null;
+      i++;
+      return v;
+    }
+    if (at() === undefined || /[-+*/()]/.test(at())) return null;
+    return Number(tokens[i++]);
+  }
+  function product() {
+    let v = primary();
+    while (v !== null && (at() === "*" || at() === "/")) {
+      const op = tokens[i++];
+      const r = primary();
+      if (r === null) return null;
+      v = op === "*" ? v * r : v / r;
+    }
+    return v;
+  }
+  function sum() {
+    let v = product();
+    while (v !== null && (at() === "+" || at() === "-")) {
+      const op = tokens[i++];
+      const r = product();
+      if (r === null) return null;
+      v = op === "+" ? v + r : v - r;
+    }
+    return v;
+  }
+
+  const out = sum();
+  return (out === null || i !== tokens.length || !isFinite(out)) ? null : out;
+}
+
+/* 1800 → 「30分」。秒数だけだと長さが掴みにくいので添える */
+function niceDuration(sec) {
+  if (sec < 60) return sec + "秒";
+  if (sec < 3600) {
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec - m * 60);
+    return m + "分" + (s ? s + "秒" : "");
+  }
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec - h * 3600) / 60);
+  return h + "時間" + (m ? m + "分" : "");
+}
 
 function timeAgo(iso) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -924,6 +989,7 @@ function fillForm() {
   $("mates").value = cfg.mates;
   $("repos").value = cfg.repos;
   $("interval").value = cfg.interval;
+  showInterval();
   peopleOff = new Set(cfg.off || []);
   laneOff = new Set(cfg.lanes || []);
   renderPeople();
@@ -932,8 +998,8 @@ function fillForm() {
 }
 function schedule() {
   if (timer) clearInterval(timer);
-  const s = Number(cfg.interval);
-  if (s >= 15) timer = setInterval(refresh, s * 1000);
+  const s = evalSeconds(cfg.interval);
+  if (s !== null && s >= 15) timer = setInterval(refresh, s * 1000);
 }
 
 /* 設定ドロワー。開閉はクラスで持つ（hidden だと transition が効かないため） */
@@ -953,6 +1019,20 @@ $("scrim").onclick = () => setSettings(false);
 $("refresh").onclick = refresh;
 $("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
+$("interval").oninput = showInterval;
+
+/* 式のままだと何秒か分からないので、結果をその場で添える */
+function showInterval() {
+  const el = $("intervalout");
+  const raw = $("interval").value.trim();
+  el.classList.remove("warn");
+  if (!raw || raw === "0") { el.textContent = "自動更新なし"; return; }
+  const sec = evalSeconds(raw);
+  if (sec === null) { el.textContent = "式として読めません"; el.classList.add("warn"); return; }
+  if (sec <= 0) { el.textContent = "= " + sec + "秒 — 自動更新なし"; return; }
+  if (sec < 15) { el.textContent = "= " + sec + "秒 — 15秒未満なので自動更新しません"; el.classList.add("warn"); return; }
+  el.textContent = "= " + sec + "秒（" + niceDuration(sec) + "）";
+}
 
 $("save").onclick = async () => {
   // 一覧から消えた人・リポジトリのトグル状態は持ち越さない
@@ -964,7 +1044,7 @@ $("save").onclick = async () => {
     token: $("token").value.trim(),
     mates: $("mates").value.trim(),
     repos: $("repos").value.trim(),
-    interval: Number($("interval").value) || 0,
+    interval: $("interval").value.trim(),
     me: cfg.me,
     off: [...peopleOff],
     hidden: [...hiddenRepos],
