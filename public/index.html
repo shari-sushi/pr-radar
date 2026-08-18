@@ -190,7 +190,11 @@
   /* ---------- board ---------- */
   .board { display: grid; gap: 22px; grid-template-columns: 1fr; align-items: start; }
   @media (min-width: 1040px) { .board { grid-template-columns: 1fr 1fr; gap: 22px 26px; } }
+  /* 片方の列が丸ごと消えたら、残りを全幅に寄せる（半分の幅で余らせない） */
+  @media (min-width: 1040px) { .board.one { grid-template-columns: 1fr; } }
   .col { display: grid; gap: 22px; align-items: start; }
+  /* display を持つ要素は hidden 属性だけでは消えないので、明示的に落とす */
+  .col[hidden], .lane[hidden] { display: none; }
 
   .lane { display: grid; grid-template-columns: 46px 1fr; background: var(--panel); border: 1px solid var(--line); }
 
@@ -322,6 +326,11 @@
       <div class="repo-toggles" id="repofilter"></div>
     </div>
     <div class="field">
+      <label>レーン</label>
+      <span class="hint">盤面に出すレーン。外したものは丸ごと消える。</span>
+      <div class="repo-toggles" id="lanefilter"></div>
+    </div>
+    <div class="field">
       <label for="interval">自動更新</label>
       <input id="interval" type="number" min="15" step="15">
       <span class="hint">秒。0 で自動更新を止める。</span>
@@ -335,7 +344,7 @@
     <div class="test-out" id="testout" hidden></div>
   </aside>
 
-  <div class="board">
+  <div class="board" id="board">
     <div class="col">
       <section class="lane" id="lane-ready" style="--c:var(--ready)"></section>
       <section class="lane" id="lane-draft" style="--c:var(--draft)"></section>
@@ -359,7 +368,8 @@ const DEFAULTS = {
   interval: 60,
   me: "",     // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
   off: [],    // チェックを外した author（小文字）。既定はチェック済み扱い
-  hidden: []  // 開いたときに畳んでおくリポジトリ。既定は全部表示
+  hidden: [], // 開いたときに畳んでおくリポジトリ。既定は全部表示
+  lanes: []   // 盤面から外すレーン（LANES の id）。既定は全部表示
 };
 const KEY = "pr-radar:config";
 
@@ -694,6 +704,16 @@ async function refresh() {
 }
 
 /* ---------- render ---------- */
+/* 外したレーンは要素ごと消す。列が空になったらその列も消し、
+   残りが1列だけになったら盤面を1列に切り替える */
+function syncLanes() {
+  const off = new Set(cfg.lanes || []);
+  for (const l of LANES) $("lane-" + l.id).hidden = off.has(l.id);
+  const cols = [...document.querySelectorAll("#board > .col")];
+  for (const col of cols) col.hidden = [...col.children].every((el) => el.hidden);
+  $("board").classList.toggle("one", cols.filter((c) => !c.hidden).length === 1);
+}
+
 function renderLane(lane, prs, emptyMsg) {
   const n = prs ? prs.length : 0;
   const rows = prs && prs.length
@@ -728,6 +748,8 @@ function renderLane(lane, prs, emptyMsg) {
       );
     });
   }
+
+  syncLanes();
 }
 
 /* 一覧のテキスト。1件2行で、1行目はタイトル、2行目は全角スペース下げで URL */
@@ -861,6 +883,28 @@ function renderRepoFilter() {
   }
 }
 
+/* 盤面に出すレーン。保存するまでは画面側だけで持つ */
+let laneOff = new Set();
+
+function renderLaneFilter() {
+  const box = $("lanefilter");
+  box.textContent = "";
+  for (const lane of LANES) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "repo";
+    b.textContent = lane.rail;
+    b.title = lane.title;
+    b.setAttribute("aria-pressed", String(!laneOff.has(lane.id)));
+    b.onclick = () => {
+      if (laneOff.has(lane.id)) laneOff.delete(lane.id);
+      else laneOff.add(lane.id);
+      renderLaneFilter();
+    };
+    box.append(b);
+  }
+}
+
 function fillForm() {
   $("token").value = cfg.token;
   $("mates").value = cfg.mates;
@@ -868,8 +912,10 @@ function fillForm() {
   $("interval").value = cfg.interval;
   peopleOff = new Set(cfg.off || []);
   repoOff = new Set(cfg.hidden || []);
+  laneOff = new Set(cfg.lanes || []);
   renderPeople();
   renderRepoFilter();
+  renderLaneFilter();
 }
 function schedule() {
   if (timer) clearInterval(timer);
@@ -908,7 +954,8 @@ $("save").onclick = async () => {
     interval: Number($("interval").value) || 0,
     me: cfg.me,
     off: [...peopleOff],
-    hidden: [...repoOff]
+    hidden: [...repoOff],
+    lanes: [...laneOff]
   };
   // 初期値を変えたら、いまの絞り込みもそこへ揃える
   hiddenRepos.clear();
