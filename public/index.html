@@ -74,8 +74,9 @@
      見出しの中のボタンとリポジトリのチップは対象外にしたいので直接の子だけ */
   .top > button { align-self: center; height: var(--btn-h); }
   /* 更新はアイコンだけ。☰ と同じ幅にして並びを揃える */
-  #refresh { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
-  #refresh svg { width: 15px; height: 15px; }
+  #refresh, #blind { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
+  #refresh svg, #blind svg { width: 15px; height: 15px; }
+  #blind[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); }
 
   button {
     font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
@@ -237,22 +238,22 @@
   .pr-row { position: relative; border-bottom: 1px solid #EDF0F1; }
   .pr-row:last-child { border-bottom: 0; }
   .pr-row:hover { background: #F7F9F9; }
-  .pr-row.in { background: #F1F7F5; }
-  /* 印の付いた行は、ホバーで色が消えてしまわないように濃いほうへ振る */
-  .pr-row.in:hover { background: #E7F2EE; }
+  /* 伏せた PR。盤面に残しているときは、目立たないように落とす。
+     opacity は .pr にだけ掛ける。ボタンまで薄くすると戻しにくい */
+  .pr-row.out .pr { opacity: .42; }
   .pr {
     display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
     padding: 10px 14px;
   }
   .scope-tag {
-    position: absolute; right: 14px; bottom: 9px;
-    display: flex; align-items: center; gap: 5px; cursor: pointer;
-    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
-    text-transform: uppercase; color: var(--faint); user-select: none;
+    position: absolute; right: 9px; bottom: 6px;
+    display: inline-flex; padding: 5px; line-height: 0;
+    border: 0; border-radius: 3px; background: transparent;
+    color: var(--faint); cursor: pointer;
+    transition: color .12s, background-color .12s;
   }
-  .scope-tag input { width: auto; margin: 0; flex: none; accent-color: var(--ready); }
-  .scope-tag:hover { color: var(--dim); }
-  .pr-row.in .scope-tag { color: var(--ready); }
+  .scope-tag svg { width: 15px; height: 15px; }
+  .scope-tag:hover { color: var(--ink); background: #EDF1F2; border: 0; }
   /* 左の色帯はリンクに従わせる。:has が無いブラウザでは帯が出ないだけ */
   .pr-row::before {
     content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
@@ -272,7 +273,7 @@
     grid-column: 1 / -1;
     font-family: var(--mono); font-size: 11px; color: var(--dim);
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;
-    padding-right: 92px;
+    padding-right: 38px;
   }
   .pr .m .sep { color: var(--line); }
   /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
@@ -312,6 +313,7 @@
     <button id="refresh" aria-label="更新" title="更新">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
     </button>
+    <button id="blind" type="button" aria-pressed="false"></button>
     <button class="burger" id="toggle" aria-label="設定" aria-expanded="false" aria-controls="settings">
       <span></span><span></span><span></span>
     </button>
@@ -399,6 +401,9 @@ const ICON_COPY = SVG + '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/
 const ICON_DOC = SVG + '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
 const ICON_DONE = SVG + '<path d="M20 6 9 17l-5-5"/></svg>';
 const ICON_FAIL = SVG + '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+/* 表示 / 伏せる のトグル */
+const ICON_EYE = SVG + '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_EYE_OFF = SVG + '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
 
 /* レビュー依頼の下書き。PR一覧はこの文末に足す */
 const REVIEW_TEMPLATE = [
@@ -504,8 +509,9 @@ async function saveConfig() {
 const LABELS = { IN: "scope-in", OUT: "scope-out" };
 const LABEL_KEY = "pr-radar:labels";
 
-/* { "owner/repo#123": "scope-in" }。既定の scope-out は持たない。
-   持つと、閉じた PR のぶんが増える一方になるため */
+/* { "owner/repo#123": "scope-out" }。伏せたものだけ覚える。
+   既定（scope-in ＝ そのまま表示）まで持つと、閉じた PR のぶんが
+   増える一方になり、消す当てもないため */
 let labels = {};
 
 function loadLabels() {
@@ -527,10 +533,10 @@ function saveLabels() {
 }
 
 const prKey = (pr) => pr.base.repo.full_name + "#" + pr.number;
-const labelOf = (pr) => labels[prKey(pr)] || LABELS.OUT;
+const labelOf = (pr) => labels[prKey(pr)] || LABELS.IN;
 
 function setLabel(pr, value) {
-  if (value === LABELS.OUT) delete labels[prKey(pr)];
+  if (value === LABELS.IN) delete labels[prKey(pr)];
   else labels[prKey(pr)] = value;
   saveLabels();
 }
@@ -706,6 +712,7 @@ async function fetchCounts(repos) {
 /* 直近の取得結果。フィルタはこれを絞り直すだけで、取り直しはしない */
 let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
+let showOut = true;    // 伏せた PR を盤面に残すか。ヘッダーの目のボタンで切り替える
 const hiddenRepos = new Set();
 
 /* リポジトリの絞り込みは hiddenRepos ひとつ。ヘッダーと設定は同じものを
@@ -764,6 +771,7 @@ function renderBoard() {
   const buckets = { ready: [], draft: [], review: [], other: [] };
   for (const item of fetched) {
     if (hiddenRepos.has(item.repo)) continue;
+    if (!showOut && labelOf(item.pr) === LABELS.OUT) continue;
     const lane = laneOf(item.pr, me, listed, ours);
     if (!lane) continue;
     buckets[lane].push(item.pr);
@@ -873,11 +881,12 @@ function renderLane(lane, prs, emptyMsg) {
       rows +
     "</div>";
 
-  el.querySelectorAll(".scope-tag input").forEach((box) => {
-    const pr = prs[Number(box.dataset.i)];
-    box.onchange = () => {
-      setLabel(pr, box.checked ? LABELS.IN : LABELS.OUT);
-      box.closest(".pr-row").classList.toggle("in", box.checked);
+  el.querySelectorAll(".scope-tag").forEach((btn) => {
+    const pr = prs[Number(btn.dataset.i)];
+    btn.onclick = () => {
+      setLabel(pr, labelOf(pr) === LABELS.IN ? LABELS.OUT : LABELS.IN);
+      // 伏せた結果そのカードが盤面から落ちることがあるので、まるごと引き直す
+      renderBoard();
     };
   });
 
@@ -936,7 +945,7 @@ function prRow(pr, i) {
 
   const inScope = labelOf(pr) === LABELS.IN;
 
-  return '<div class="pr-row' + (inScope ? " in" : "") + '">' +
+  return '<div class="pr-row' + (inScope ? "" : " out") + '">' +
     '<div class="pr">' +
       '<a class="t" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' + esc(pr.title) + "</a>" +
       '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
@@ -946,10 +955,12 @@ function prRow(pr, i) {
         (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
       "</span>" +
     "</div>" +
-    '<label class="scope-tag" title="' + LABELS.IN + ' / ' + LABELS.OUT + ' を切り替える">' +
-      '<input type="checkbox" data-i="' + i + '"' + (inScope ? " checked" : "") + ">" +
-      "<span>" + LABELS.IN + "</span>" +
-    "</label>" +
+    '<button class="scope-tag" type="button" data-i="' + i + '"' +
+      ' aria-pressed="' + String(!inScope) + '"' +
+      ' aria-label="' + (inScope ? "この PR を伏せる" : "伏せているのを戻す") + '"' +
+      ' title="' + (inScope ? LABELS.IN + " — 押すと伏せる" : LABELS.OUT + " — 押すと戻す") + '">' +
+      (inScope ? ICON_EYE : ICON_EYE_OFF) +
+    "</button>" +
   "</div>";
 }
 
@@ -1084,6 +1095,16 @@ function setSettings(open) {
   (open ? $("token") : $("toggle")).focus();
 }
 
+/* ヘッダーの目。伏せた PR を盤面に残すかどうかだけを切り替える */
+function paintBlind() {
+  const b = $("blind");
+  b.innerHTML = showOut ? ICON_EYE : ICON_EYE_OFF;
+  b.setAttribute("aria-pressed", String(!showOut));
+  b.title = showOut ? "伏せたPRも出している — 押すと隠す" : "伏せたPRを隠している — 押すと出す";
+  b.setAttribute("aria-label", b.title);
+}
+
+$("blind").onclick = () => { showOut = !showOut; paintBlind(); renderBoard(); };
 $("showall").onclick = () => { hiddenRepos.clear(); syncRepos(); };
 $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
@@ -1202,6 +1223,7 @@ document.addEventListener("keydown", (e) => {
 (async () => {
   // 印は鍵に依存しないので、最初のカードを描く前に読んでおく
   loadLabels();
+  paintBlind();
   // 鍵と設定を読む前に、レーンの枠だけ先に出す（真っ白な画面を見せないため）
   LANES.forEach((l) => renderLane(l, null, "読み込み中…"));
 
