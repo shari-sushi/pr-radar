@@ -37,7 +37,7 @@ cd pr-radar
 
 同じ author のチェックは、設定の中と盤面の上（ヘッダーの水平線の直下）の2か所に出る。どちらを押しても同じものが動く。帯は1行に並び、人数が増えて幅からはみ出たときだけ横スクロールになる。
 
-author のチェックとヘッダーの目は、押した時点で反映され、そのまま保存される（`pr-radar:view`）。リポジトリとレーンのトグルは押した時点で反映されるが、次に開いたときも残すには「保存して更新」が要る（`pr-radar:config`）。
+author のチェック・ヘッダーの目・リポジトリの絞り込みは、押した時点で反映され、そのまま保存される（`pr-radar:view`）。レーンのトグルだけは押した時点で反映されるが、次に開いたときも残すには「保存して更新」が要る（`pr-radar:config`）。
 
 ### PR に付ける印
 
@@ -57,7 +57,7 @@ const LABELS = { IN: "scope-in", OUT: "scope-out" };
 | --- | --- | --- |
 | 表示するか | `localStorage` の `pr-radar:labels` | `{ "owner/repo#123": "scope-out" }` |
 | 待ち | `localStorage` の `pr-radar:waiting` | `{ "owner/repo#123": true }` |
-| ヘッダーの目・author のチェック | `localStorage` の `pr-radar:view` | `{ "showOut": false, "off": ["octocat"] }` |
+| ヘッダーの目・author のチェック・リポジトリの絞り込み | `localStorage` の `pr-radar:view` | `{ "showOut": false, "off": ["octocat"], "hidden": ["example-org/repo-b"] }` |
 
 持つのは伏せたものだけ。既定の `scope-in` まで書くと、閉じた PR のぶんが増える一方で消す当てがないため、既定に戻したらキーごと消している。トークンと違って秘密ではないので暗号化はしていない。設定は `localStorage` に保存されるので、次回からは開くだけ。トークンは端末の外に出ない（送信先は `https://api.github.com` のみ）。
 
