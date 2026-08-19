@@ -302,8 +302,29 @@
   .memo-tag:hover { color: var(--ink); background: #EDF1F2; border: 0; }
   /* 書いてあるかどうかは、開かなくても分かるようにしておく。
      15px のアイコンだと線の色差は読み取りにくいので、地色のほうを変える */
-  .memo-tag.has { background: #D5EBE3; }
+  .memo-tag.has { background: #D5EBE3; position: relative; }
   .memo-tag.has:hover { background: #C2E0D5; color: var(--ink); }
+  /* メモの中身を出す吹き出し。title 属性だと出るまでの時間も消えるまでの
+     時間もブラウザ任せで、長い本文が読み切る前に落ちるので自前で持つ */
+  .memo-tag[data-memo]::after {
+    content: attr(data-memo);
+    position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 5;
+    width: max-content; max-width: 400px;
+    white-space: pre-wrap; overflow-wrap: anywhere; text-align: left;
+    /* 読ませる文なので、盤面の文字（11px）より一回り大きくする。
+       幅も同じ比で広げて、1行に入る文字数を変えない */
+    font-family: var(--mono); font-size: 14px; line-height: 1.55;
+    letter-spacing: 0; text-transform: none;
+    color: var(--panel); background: rgba(14, 26, 34, .93);
+    border-radius: 3px; padding: 7px 9px;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .12s, visibility .12s; transition-delay: 0s;
+  }
+  /* 遅延は出るときだけ。離したら待たずに消える */
+  .memo-tag[data-memo]:hover::after,
+  .memo-tag[data-memo]:focus-visible::after {
+    opacity: 1; visibility: visible; transition-delay: 1.4s;
+  }
   .scope-tag {
     display: inline-flex; padding: 5px; line-height: 0;
     border: 0; border-radius: 3px; background: transparent;
@@ -1143,7 +1164,8 @@ function prRow(pr, i) {
     '<div class="pr-actions">' +
       '<button class="memo-tag' + (memo ? " has" : "") + '" type="button" data-i="' + i + '"' +
         // 中身をそのままホバーに出す。開かずに読めるほうが速い。改行も残す
-        ' aria-label="メモ" title="' + esc(memo || "メモを書く") + '">' +
+        (memo ? ' data-memo="' + esc(memo) + '"' : ' title="メモを書く"') +
+        ' aria-label="メモ">' +
         ICON_MEMO +
       "</button>" +
       '<label class="wait-tag" title="待ちの印を付ける（表示は変わらない）">' +
