@@ -232,15 +232,17 @@
   .lane-head .copy.done { color: var(--c); }
   .lane-head .copy.fail { color: var(--review); }
 
-  /* チェックボックスは <a> の中に置けない（押すと PR が開いてしまう）ので、
-     行を1枚かぶせて a と label を並べ、label だけ右下に浮かせる */
+  /* 行は器。リンクはタイトルだけ、チェックボックスは右下に浮かせる。
+     カード全体をリンクにすると、チェックボックスを押しても PR が開いてしまう */
   .pr-row { position: relative; border-bottom: 1px solid #EDF0F1; }
   .pr-row:last-child { border-bottom: 0; }
+  .pr-row:hover { background: #F7F9F9; }
   .pr-row.in { background: #F1F7F5; }
+  /* 印の付いた行は、ホバーで色が消えてしまわないように濃いほうへ振る */
+  .pr-row.in:hover { background: #E7F2EE; }
   .pr {
     display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
     padding: 10px 14px;
-    text-decoration: none; color: inherit; position: relative;
   }
   .scope-tag {
     position: absolute; right: 14px; bottom: 9px;
@@ -251,16 +253,17 @@
   .scope-tag input { width: auto; margin: 0; flex: none; accent-color: var(--ready); }
   .scope-tag:hover { color: var(--dim); }
   .pr-row.in .scope-tag { color: var(--ready); }
-  /* 印の付いた行は、ホバーで色が消えてしまわないように濃いほうへ振る */
-  .pr-row.in .pr:hover, .pr-row.in .pr:focus-visible { background: #E7F2EE; }
-  .pr::before {
+  /* 左の色帯はリンクに従わせる。:has が無いブラウザでは帯が出ないだけ */
+  .pr-row::before {
     content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
     background: var(--c); opacity: 0; transition: opacity .12s;
   }
-  .pr:hover, .pr:focus-visible { background: #F7F9F9; }
-  .pr:hover::before, .pr:focus-visible::before { opacity: 1; }
-  .pr .t { font-size: 13.5px; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
-  .pr:hover .t { text-decoration: underline; text-underline-offset: 2px; }
+  .pr-row:has(.t:hover)::before, .pr-row:has(.t:focus-visible)::before { opacity: 1; }
+  .pr .t {
+    font-size: 13.5px; font-weight: 500; min-width: 0; overflow-wrap: anywhere;
+    color: inherit; text-decoration: none; justify-self: start;
+  }
+  .pr .t:hover, .pr .t:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
   .pr .num {
     font-family: var(--mono); font-size: 11.5px; color: var(--faint);
     white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums;
@@ -934,15 +937,15 @@ function prRow(pr, i) {
   const inScope = labelOf(pr) === LABELS.IN;
 
   return '<div class="pr-row' + (inScope ? " in" : "") + '">' +
-    '<a class="pr" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' +
-      '<span class="t">' + esc(pr.title) + "</span>" +
+    '<div class="pr">' +
+      '<a class="t" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' + esc(pr.title) + "</a>" +
       '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
       '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
         '<span class="sep">|</span>' + timeAgo(pr.updated_at) +
         countsHtml(pr.counts) +
         (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
       "</span>" +
-    "</a>" +
+    "</div>" +
     '<label class="scope-tag" title="' + LABELS.IN + ' / ' + LABELS.OUT + ' を切り替える">' +
       '<input type="checkbox" data-i="' + i + '"' + (inScope ? " checked" : "") + ">" +
       "<span>" + LABELS.IN + "</span>" +
