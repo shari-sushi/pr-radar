@@ -232,12 +232,27 @@
   .lane-head .copy.done { color: var(--c); }
   .lane-head .copy.fail { color: var(--review); }
 
+  /* チェックボックスは <a> の中に置けない（押すと PR が開いてしまう）ので、
+     行を1枚かぶせて a と label を並べ、label だけ右下に浮かせる */
+  .pr-row { position: relative; border-bottom: 1px solid #EDF0F1; }
+  .pr-row:last-child { border-bottom: 0; }
+  .pr-row.in { background: #F1F7F5; }
   .pr {
     display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
-    padding: 10px 14px; border-bottom: 1px solid #EDF0F1;
+    padding: 10px 14px;
     text-decoration: none; color: inherit; position: relative;
   }
-  .pr:last-child { border-bottom: 0; }
+  .scope-tag {
+    position: absolute; right: 14px; bottom: 9px;
+    display: flex; align-items: center; gap: 5px; cursor: pointer;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--faint); user-select: none;
+  }
+  .scope-tag input { width: auto; margin: 0; flex: none; accent-color: var(--ready); }
+  .scope-tag:hover { color: var(--dim); }
+  .pr-row.in .scope-tag { color: var(--ready); }
+  /* 印の付いた行は、ホバーで色が消えてしまわないように濃いほうへ振る */
+  .pr-row.in .pr:hover, .pr-row.in .pr:focus-visible { background: #E7F2EE; }
   .pr::before {
     content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
     background: var(--c); opacity: 0; transition: opacity .12s;
@@ -254,6 +269,7 @@
     grid-column: 1 / -1;
     font-family: var(--mono); font-size: 11px; color: var(--dim);
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;
+    padding-right: 92px;
   }
   .pr .m .sep { color: var(--line); }
   /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
@@ -478,6 +494,42 @@ async function saveConfig() {
     showAlert("設定を保存できませんでした",
       "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
   }
+}
+
+/* ---------- PR に付ける印 ---------- */
+/* 増やすときはここに足す。値がそのまま localStorage に入る */
+const LABELS = { IN: "scope-in", OUT: "scope-out" };
+const LABEL_KEY = "pr-radar:labels";
+
+/* { "owner/repo#123": "scope-in" }。既定の scope-out は持たない。
+   持つと、閉じた PR のぶんが増える一方になるため */
+let labels = {};
+
+function loadLabels() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LABEL_KEY) || "{}");
+    labels = (saved && typeof saved === "object") ? saved : {};
+  } catch (e) {
+    labels = {};
+  }
+}
+
+function saveLabels() {
+  try {
+    localStorage.setItem(LABEL_KEY, JSON.stringify(labels));
+  } catch (e) {
+    showAlert("印を保存できませんでした",
+      "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
+  }
+}
+
+const prKey = (pr) => pr.base.repo.full_name + "#" + pr.number;
+const labelOf = (pr) => labels[prKey(pr)] || LABELS.OUT;
+
+function setLabel(pr, value) {
+  if (value === LABELS.OUT) delete labels[prKey(pr)];
+  else labels[prKey(pr)] = value;
+  saveLabels();
 }
 
 /* ---------- helpers ---------- */
@@ -797,7 +849,7 @@ function syncLanes() {
 function renderLane(lane, prs, emptyMsg) {
   const n = prs ? prs.length : 0;
   const rows = prs && prs.length
-    ? prs.map((pr) => prRow(pr)).join("")
+    ? prs.map((pr, i) => prRow(pr, i)).join("")
     : '<p class="empty">' + esc(emptyMsg || "いまは空です。") + "</p>";
 
   // コピーは「いま出ている分」が対象。中身が無いときはボタンを出さない
@@ -817,6 +869,14 @@ function renderLane(lane, prs, emptyMsg) {
       "</div>" +
       rows +
     "</div>";
+
+  el.querySelectorAll(".scope-tag input").forEach((box) => {
+    const pr = prs[Number(box.dataset.i)];
+    box.onchange = () => {
+      setLabel(pr, box.checked ? LABELS.IN : LABELS.OUT);
+      box.closest(".pr-row").classList.toggle("in", box.checked);
+    };
+  });
 
   if (canCopy) {
     el.querySelectorAll(".copy").forEach((btn) => {
@@ -860,7 +920,7 @@ function countsHtml(c) {
     "</span>";
 }
 
-function prRow(pr) {
+function prRow(pr, i) {
   const repo = pr.base.repo.name;
   const age = daysOld(pr.updated_at);
   const chips = [];
@@ -871,14 +931,23 @@ function prRow(pr) {
     chips.push('<span class="chip label">' + esc(l.name) + "</span>");
   });
 
-  return '<a class="pr" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' +
-    '<span class="t">' + esc(pr.title) + "</span>" +
-    '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
-    '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
-      '<span class="sep">|</span>' + timeAgo(pr.updated_at) +
-      countsHtml(pr.counts) +
-      (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
-    "</span></a>";
+  const inScope = labelOf(pr) === LABELS.IN;
+
+  return '<div class="pr-row' + (inScope ? " in" : "") + '">' +
+    '<a class="pr" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' +
+      '<span class="t">' + esc(pr.title) + "</span>" +
+      '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
+      '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
+        '<span class="sep">|</span>' + timeAgo(pr.updated_at) +
+        countsHtml(pr.counts) +
+        (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
+      "</span>" +
+    "</a>" +
+    '<label class="scope-tag" title="' + LABELS.IN + ' / ' + LABELS.OUT + ' を切り替える">' +
+      '<input type="checkbox" data-i="' + i + '"' + (inScope ? " checked" : "") + ">" +
+      "<span>" + LABELS.IN + "</span>" +
+    "</label>" +
+  "</div>";
 }
 
 /* ---------- wiring ---------- */
@@ -1128,6 +1197,8 @@ document.addEventListener("keydown", (e) => {
 });
 
 (async () => {
+  // 印は鍵に依存しないので、最初のカードを描く前に読んでおく
+  loadLabels();
   // 鍵と設定を読む前に、レーンの枠だけ先に出す（真っ白な画面を見せないため）
   LANES.forEach((l) => renderLane(l, null, "読み込み中…"));
 
