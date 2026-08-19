@@ -221,6 +221,11 @@
   }
   .lane-head h2 { margin: 0; font-size: 13.5px; font-weight: 700; letter-spacing: .01em; }
   .lane-head .sub { font-size: 11.5px; color: var(--faint); }
+  /* 書式の説明なので、等幅にして本文と読み分けられるようにする */
+  .lane-head .sub.legend {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .01em;
+    min-width: 0; overflow-wrap: anywhere;
+  }
   /* 見出しの右端に寄せる。文字は baseline 揃えだがボタンは箱として中央で揃える */
   .lane-head .acts { margin-left: auto; align-self: center; display: flex; gap: 2px; }
   .lane-head .copy {
@@ -452,7 +457,11 @@ const REVIEW_TEMPLATE = [
 ].join("\n");
 
 const LANES = [
-  { id: "ready",  rail: "待ち",   title: "自分たちのPR — レビュー待ち", sub: "出してある、動きが要るもの", copy: true },
+  // 待ちのレーンだけ、説明の代わりにカードのフッターの読み方を出す。
+  // 書式はどのレーンでも同じなので、最初に目に入る1か所にだけ置く
+  { id: "ready",  rail: "待ち",   title: "自分たちのPR — レビュー待ち",
+    sub: "({author} {created_at} - {updated ago} comment-count, review-count, inline-comment-count)",
+    legend: true, copy: true },
   { id: "draft",  rail: "下書",   title: "自分たちのPR — Draft",       sub: "作業中。放置してないか確認用" },
   { id: "review", rail: "依頼",   title: "自分にレビュー依頼が来ている", sub: "Reviewer に指名されているもの" },
   { id: "other",  rail: "他",     title: "ほかの人のPR",                sub: "3リポジトリで今開いている残り全部" }
@@ -946,7 +955,8 @@ function renderLane(lane, prs, emptyMsg) {
   el.innerHTML =
     '<div class="rail"><span class="n">' + (prs ? n : "–") + '</span><span class="lbl">' + lane.rail + "</span></div>" +
     '<div class="lane-body">' +
-      '<div class="lane-head"><h2>' + esc(lane.title) + '</h2><span class="sub">' + esc(lane.sub) + "</span>" +
+      '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
+        '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" +
         (canCopy
           ? '<span class="acts">' +
               '<button class="copy" type="button" data-kind="list" aria-label="この一覧をコピー" title="この一覧をコピー">' + ICON_COPY + "</button>" +
