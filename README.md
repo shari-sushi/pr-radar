@@ -43,7 +43,7 @@ cd pr-radar
 
 各カードの右下の目のボタンで `scope-in` / `scope-out` を切り替える。既定は `scope-in`（そのまま表示）で、押すと `scope-out`＝伏せた扱いになり、その行は薄くなる。
 
-ヘッダーの更新の右にある目のボタンは、伏せた PR を盤面に残すかどうかの切り替え。押すと `scope-out` のカードが盤面から消える。こちらは保存せず、開き直すと「全部出す」に戻る。
+ヘッダーの更新の右にある目のボタンは、伏せた PR を盤面に残すかどうかの切り替え。押すと `scope-out` のカードが盤面から消える。この状態も押した時点で保存され、次に開いたときも続く。
 
 値は `index.html` の `LABELS` に enum として置いてあり、増やすときはここに足す。
 
@@ -57,6 +57,7 @@ const LABELS = { IN: "scope-in", OUT: "scope-out" };
 | --- | --- | --- |
 | 表示するか | `localStorage` の `pr-radar:labels` | `{ "owner/repo#123": "scope-out" }` |
 | 待ち | `localStorage` の `pr-radar:waiting` | `{ "owner/repo#123": true }` |
+| ヘッダーの目 | `localStorage` の `pr-radar:view` | `{ "showOut": false }` |
 
 持つのは伏せたものだけ。既定の `scope-in` まで書くと、閉じた PR のぶんが増える一方で消す当てがないため、既定に戻したらキーごと消している。トークンと違って秘密ではないので暗号化はしていない。設定は `localStorage` に保存されるので、次回からは開くだけ。トークンは端末の外に出ない（送信先は `https://api.github.com` のみ）。
 

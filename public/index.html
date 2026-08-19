@@ -543,6 +543,8 @@ const LABELS = { IN: "scope-in", OUT: "scope-out" };
 const LABEL_KEY = "pr-radar:labels";
 /* 「待ち」。scope とは別の軸なので、同じ入れ物に混ぜずキーを分ける */
 const WAIT_KEY = "pr-radar:waiting";
+/* 盤面の見え方。保存ボタンのある設定とは別に、押した時点で覚える */
+const VIEW_KEY = "pr-radar:view";
 
 /* どちらも既定から外れたものだけ持つ。既定まで書くと、閉じた PR のぶんが
    増える一方になり、消す当てもないため */
@@ -550,11 +552,12 @@ let labels = {};    // { "owner/repo#123": "scope-out" }
 let waiting = {};   // { "owner/repo#123": true }
 
 function loadMarks() {
-  labels = readMarks(LABEL_KEY);
-  waiting = readMarks(WAIT_KEY);
+  labels = readJson(LABEL_KEY);
+  waiting = readJson(WAIT_KEY);
 }
 
-function readMarks(key) {
+/* localStorage の小さな JSON。壊れていたら空で始める */
+function readJson(key) {
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "{}");
     return (saved && typeof saved === "object") ? saved : {};
@@ -563,11 +566,11 @@ function readMarks(key) {
   }
 }
 
-function writeMarks(key, marks) {
+function writeJson(key, value) {
   try {
-    localStorage.setItem(key, JSON.stringify(marks));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
-    showAlert("印を保存できませんでした",
+    showAlert("保存できませんでした",
       "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
   }
 }
@@ -579,7 +582,7 @@ const labelOf = (pr) => labels[prKey(pr)] || LABELS.IN;
 function setLabel(pr, value) {
   if (value === LABELS.IN) delete labels[prKey(pr)];
   else labels[prKey(pr)] = value;
-  writeMarks(LABEL_KEY, labels);
+  writeJson(LABEL_KEY, labels);
 }
 
 const isWaiting = (pr) => waiting[prKey(pr)] === true;
@@ -587,7 +590,7 @@ const isWaiting = (pr) => waiting[prKey(pr)] === true;
 function setWaiting(pr, on) {
   if (on) waiting[prKey(pr)] = true;
   else delete waiting[prKey(pr)];
-  writeMarks(WAIT_KEY, waiting);
+  writeJson(WAIT_KEY, waiting);
 }
 
 /* ---------- helpers ---------- */
@@ -762,6 +765,15 @@ async function fetchCounts(repos) {
 let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
 let showOut = true;    // 伏せた PR を盤面に残すか。ヘッダーの目のボタンで切り替える
+
+function loadView() {
+  const view = readJson(VIEW_KEY);
+  showOut = view.showOut !== false;   // 知らない値や空なら「出す」側に倒す
+}
+
+function saveView() {
+  writeJson(VIEW_KEY, { showOut });
+}
 const hiddenRepos = new Set();
 
 /* リポジトリの絞り込みは hiddenRepos ひとつ。ヘッダーと設定は同じものを
@@ -1177,7 +1189,7 @@ function paintBlind() {
   b.setAttribute("aria-label", b.title);
 }
 
-$("blind").onclick = () => { showOut = !showOut; paintBlind(); renderBoard(); };
+$("blind").onclick = () => { showOut = !showOut; saveView(); paintBlind(); renderBoard(); };
 $("showall").onclick = () => { hiddenRepos.clear(); syncRepos(); };
 $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
@@ -1296,6 +1308,7 @@ document.addEventListener("keydown", (e) => {
 (async () => {
   // 印は鍵に依存しないので、最初のカードを描く前に読んでおく
   loadMarks();
+  loadView();
   paintBlind();
   // 鍵と設定を読む前に、レーンの枠だけ先に出す（真っ白な画面を見せないため）
   LANES.forEach((l) => renderLane(l, null, "読み込み中…"));
