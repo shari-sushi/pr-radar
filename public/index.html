@@ -422,7 +422,6 @@ const DEFAULTS = {
   repos: "example-org/repo-a\nexample-org/repo-b\nexample-org/repo-c",
   interval: 60,
   me: "",     // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
-  off: [],    // チェックを外した author（小文字）。既定はチェック済み扱い
   hidden: [], // 開いたときに畳んでおくリポジトリ。既定は全部表示
   lanes: []   // 盤面から外すレーン（LANES の id）。既定は全部表示
 };
@@ -769,10 +768,14 @@ let showOut = true;    // 伏せた PR を盤面に残すか。ヘッダーの�
 function loadView() {
   const view = readJson(VIEW_KEY);
   showOut = view.showOut !== false;   // 知らない値や空なら「出す」側に倒す
+  // 以前はチェックを外した author を設定側（cfg.off）に置いていた。
+  // 残っていれば一度だけ引き継ぎ、以後は view だけを見る
+  const off = Array.isArray(view.off) ? view.off : (cfg.off || []);
+  peopleOff = new Set(off.filter((k) => typeof k === "string"));
 }
 
 function saveView() {
-  writeJson(VIEW_KEY, { showOut });
+  writeJson(VIEW_KEY, { showOut, off: [...peopleOff] });
 }
 const hiddenRepos = new Set();
 
@@ -1084,6 +1087,7 @@ function paintPeople(box, isDrawer) {
       const on = box2.checked;
       if (on) peopleOff.delete(person.key);
       else peopleOff.add(person.key);
+      saveView();
       document.querySelectorAll(".people input, .people-bar input").forEach((other) => {
         if (other.dataset.person === person.key) other.checked = on;
       });
@@ -1158,7 +1162,6 @@ function fillForm() {
   $("repos").value = cfg.repos;
   $("interval").value = cfg.interval;
   showInterval();
-  peopleOff = new Set(cfg.off || []);
   laneOff = new Set(cfg.lanes || []);
   renderPeople();
   renderRepoFilter();
@@ -1216,6 +1219,7 @@ $("save").onclick = async () => {
   // 一覧から消えた人・リポジトリのトグル状態は持ち越さない
   const live = new Set(peopleList().map((p) => p.key));
   peopleOff = new Set([...peopleOff].filter((key) => live.has(key)));
+  saveView();
   const liveRepos = new Set($("repos").value.split("\n").map((s) => s.trim()).filter(Boolean));
   for (const repo of [...hiddenRepos]) if (!liveRepos.has(repo)) hiddenRepos.delete(repo);
   cfg = {
@@ -1224,7 +1228,6 @@ $("save").onclick = async () => {
     repos: $("repos").value.trim(),
     interval: $("interval").value.trim(),
     me: cfg.me,
-    off: [...peopleOff],
     hidden: [...hiddenRepos],
     lanes: [...laneOff]
   };
@@ -1308,7 +1311,6 @@ document.addEventListener("keydown", (e) => {
 (async () => {
   // 印は鍵に依存しないので、最初のカードを描く前に読んでおく
   loadMarks();
-  loadView();
   paintBlind();
   // 鍵と設定を読む前に、レーンの枠だけ先に出す（真っ白な画面を見せないため）
   LANES.forEach((l) => renderLane(l, null, "読み込み中…"));
@@ -1319,6 +1321,8 @@ document.addEventListener("keydown", (e) => {
     $("cryptonote").hidden = false;
   }
   await loadConfig();
+  loadView();     // 旧い cfg.off を引き継ぐことがあるので loadConfig の後
+  paintBlind();
   for (const repo of cfg.hidden || []) hiddenRepos.add(repo);
   fillForm();
   schedule();
