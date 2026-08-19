@@ -245,8 +245,22 @@
     display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
     padding: 10px 14px;
   }
-  .scope-tag {
+  /* 行の右下に並ぶ操作。押しても PR は開かない場所 */
+  .pr-actions {
     position: absolute; right: 9px; bottom: 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .wait-tag {
+    display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+    white-space: nowrap; user-select: none;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: var(--faint);
+  }
+  .wait-tag input {
+    width: auto; margin: 0; padding: 0; border: 0; flex: none; accent-color: var(--ready);
+  }
+  .wait-tag:hover { color: var(--ink); }
+  .wait-tag:has(input:checked) { color: var(--ink); }
+  .scope-tag {
     display: inline-flex; padding: 5px; line-height: 0;
     border: 0; border-radius: 3px; background: transparent;
     color: var(--faint); cursor: pointer;
@@ -273,7 +287,7 @@
     grid-column: 1 / -1;
     font-family: var(--mono); font-size: 11px; color: var(--dim);
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;
-    padding-right: 38px;
+    padding-right: 88px;
   }
   .pr .m .sep { color: var(--line); }
   /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
@@ -524,27 +538,34 @@ async function saveConfig() {
 }
 
 /* ---------- PR に付ける印 ---------- */
-/* 増やすときはここに足す。値がそのまま localStorage に入る */
+/* 盤面に出すかどうか。増やすときはここに足す。値がそのまま localStorage に入る */
 const LABELS = { IN: "scope-in", OUT: "scope-out" };
 const LABEL_KEY = "pr-radar:labels";
+/* 「待ち」。scope とは別の軸なので、同じ入れ物に混ぜずキーを分ける */
+const WAIT_KEY = "pr-radar:waiting";
 
-/* { "owner/repo#123": "scope-out" }。伏せたものだけ覚える。
-   既定（scope-in ＝ そのまま表示）まで持つと、閉じた PR のぶんが
+/* どちらも既定から外れたものだけ持つ。既定まで書くと、閉じた PR のぶんが
    増える一方になり、消す当てもないため */
-let labels = {};
+let labels = {};    // { "owner/repo#123": "scope-out" }
+let waiting = {};   // { "owner/repo#123": true }
 
-function loadLabels() {
+function loadMarks() {
+  labels = readMarks(LABEL_KEY);
+  waiting = readMarks(WAIT_KEY);
+}
+
+function readMarks(key) {
   try {
-    const saved = JSON.parse(localStorage.getItem(LABEL_KEY) || "{}");
-    labels = (saved && typeof saved === "object") ? saved : {};
+    const saved = JSON.parse(localStorage.getItem(key) || "{}");
+    return (saved && typeof saved === "object") ? saved : {};
   } catch (e) {
-    labels = {};
+    return {};
   }
 }
 
-function saveLabels() {
+function writeMarks(key, marks) {
   try {
-    localStorage.setItem(LABEL_KEY, JSON.stringify(labels));
+    localStorage.setItem(key, JSON.stringify(marks));
   } catch (e) {
     showAlert("印を保存できませんでした",
       "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
@@ -552,12 +573,21 @@ function saveLabels() {
 }
 
 const prKey = (pr) => pr.base.repo.full_name + "#" + pr.number;
+
 const labelOf = (pr) => labels[prKey(pr)] || LABELS.IN;
 
 function setLabel(pr, value) {
   if (value === LABELS.IN) delete labels[prKey(pr)];
   else labels[prKey(pr)] = value;
-  saveLabels();
+  writeMarks(LABEL_KEY, labels);
+}
+
+const isWaiting = (pr) => waiting[prKey(pr)] === true;
+
+function setWaiting(pr, on) {
+  if (on) waiting[prKey(pr)] = true;
+  else delete waiting[prKey(pr)];
+  writeMarks(WAIT_KEY, waiting);
 }
 
 /* ---------- helpers ---------- */
@@ -900,6 +930,12 @@ function renderLane(lane, prs, emptyMsg) {
       rows +
     "</div>";
 
+  // 「待ち」は覚えるだけ。レーンにも絞り込みにも効かないので引き直さない
+  el.querySelectorAll(".wait-tag input").forEach((box) => {
+    const pr = prs[Number(box.dataset.i)];
+    box.onchange = () => setWaiting(pr, box.checked);
+  });
+
   el.querySelectorAll(".scope-tag").forEach((btn) => {
     const pr = prs[Number(btn.dataset.i)];
     btn.onclick = () => {
@@ -974,12 +1010,18 @@ function prRow(pr, i) {
         (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
       "</span>" +
     "</div>" +
-    '<button class="scope-tag" type="button" data-i="' + i + '"' +
-      ' aria-pressed="' + String(!inScope) + '"' +
-      ' aria-label="' + (inScope ? "この PR を伏せる" : "伏せているのを戻す") + '"' +
-      ' title="' + (inScope ? LABELS.IN + " — 押すと伏せる" : LABELS.OUT + " — 押すと戻す") + '">' +
-      (inScope ? ICON_EYE : ICON_EYE_OFF) +
-    "</button>" +
+    '<div class="pr-actions">' +
+      '<label class="wait-tag" title="待ちの印を付ける（表示は変わらない）">' +
+        '<input type="checkbox" data-i="' + i + '"' + (isWaiting(pr) ? " checked" : "") + ">" +
+        "<span>待ち</span>" +
+      "</label>" +
+      '<button class="scope-tag" type="button" data-i="' + i + '"' +
+        ' aria-pressed="' + String(!inScope) + '"' +
+        ' aria-label="' + (inScope ? "この PR を伏せる" : "伏せているのを戻す") + '"' +
+        ' title="' + (inScope ? LABELS.IN + " — 押すと伏せる" : LABELS.OUT + " — 押すと戻す") + '">' +
+        (inScope ? ICON_EYE : ICON_EYE_OFF) +
+      "</button>" +
+    "</div>" +
   "</div>";
 }
 
@@ -1253,7 +1295,7 @@ document.addEventListener("keydown", (e) => {
 
 (async () => {
   // 印は鍵に依存しないので、最初のカードを描く前に読んでおく
-  loadLabels();
+  loadMarks();
   paintBlind();
   // 鍵と設定を読む前に、レーンの枠だけ先に出す（真っ白な画面を見せないため）
   LANES.forEach((l) => renderLane(l, null, "読み込み中…"));

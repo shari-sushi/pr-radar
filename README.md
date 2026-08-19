@@ -51,9 +51,12 @@ cd pr-radar
 const LABELS = { IN: "scope-in", OUT: "scope-out" };
 ```
 
+カードにはもうひとつ、目のマークの左に「待ち」のチェックボックスがある。こちらは覚えるだけで、レーンにも絞り込みにも見た目にも影響しない。scope とは別の軸なので、キーも分けてある。
+
 | | 保存場所 | 形 |
 | --- | --- | --- |
-| 印 | `localStorage` の `pr-radar:labels` | `{ "owner/repo#123": "scope-in" }` |
+| 表示するか | `localStorage` の `pr-radar:labels` | `{ "owner/repo#123": "scope-out" }` |
+| 待ち | `localStorage` の `pr-radar:waiting` | `{ "owner/repo#123": true }` |
 
 持つのは伏せたものだけ。既定の `scope-in` まで書くと、閉じた PR のぶんが増える一方で消す当てがないため、既定に戻したらキーごと消している。トークンと違って秘密ではないので暗号化はしていない。設定は `localStorage` に保存されるので、次回からは開くだけ。トークンは端末の外に出ない（送信先は `https://api.github.com` のみ）。
 
