@@ -527,7 +527,7 @@ const LANES = [
   // 待ちのレーンだけ、説明の代わりにカードのフッターの読み方を出す。
   // 書式はどのレーンでも同じなので、最初に目に入る1か所にだけ置く
   { id: "ready",  rail: "待ち",   title: "自分たちのPR — レビュー待ち",
-    sub: "author | created_at - updated-ago | comment-count, review-count, inline-comment-count",
+    sub: "author | created_at - last-updated | comment-count, review-count, inline-comment-count",
     legend: true, copy: true },
   { id: "draft",  rail: "下書",   title: "自分たちのPR — Draft",       sub: "作業中。放置してないか確認用" },
   { id: "review", rail: "依頼",   title: "自分にレビュー依頼が来ている", sub: "Reviewer に指名されているもの" },
