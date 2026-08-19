@@ -290,6 +290,23 @@
 
   .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
 
+  /* author のチェック。水平線の直下に1行で並べ、はみ出たときだけ横に流す */
+  .people-bar {
+    display: flex; gap: 16px; align-items: center;
+    margin: -12px 0 18px; padding-bottom: 4px;
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+  }
+  .people-bar:empty { display: none; }
+  .people-bar label {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    flex: none; white-space: nowrap;
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+  }
+  .people-bar label:hover { color: var(--ink); }
+  .people-bar input[type="checkbox"] {
+    width: auto; margin: 0; padding: 0; border: 0; flex: none; accent-color: var(--ready);
+  }
+
   .alert {
     background: var(--panel); border: 1px solid var(--review); border-left-width: 3px;
     padding: 12px 14px; margin-bottom: 18px; font-size: 13px;
@@ -318,6 +335,8 @@
       <span></span><span></span><span></span>
     </button>
   </div>
+
+  <div class="people-bar" id="peoplebar"></div>
 
   <div class="alert" id="alert" hidden></div>
 
@@ -983,11 +1002,18 @@ function peopleList() {
 }
 
 /* ログイン名は利用者の入力なので、innerHTML ではなく DOM API で組み立てる */
+/* 同じチェックが設定の中と盤面の上の2か所に出る。どちらも peopleOff を
+   見ているだけなので、片方を押したらもう片方の checked だけ合わせる。
+   描き直さないのは、押した瞬間にフォーカスが飛ぶのを避けるため */
 function renderPeople() {
-  const box = $("people");
+  paintPeople($("people"), true);
+  paintPeople($("peoplebar"), false);
+}
+
+function paintPeople(box, isDrawer) {
   box.textContent = "";
 
-  if (!cfg.me) {
+  if (!cfg.me && isDrawer) {
     const p = document.createElement("p");
     p.className = "none";
     p.textContent = "自分は、トークンを保存すると一覧に出ます。";
@@ -999,15 +1025,20 @@ function renderPeople() {
     const box2 = document.createElement("input");
     box2.type = "checkbox";
     box2.checked = !peopleOff.has(person.key);
+    box2.dataset.person = person.key;
     box2.onchange = () => {
-      if (box2.checked) peopleOff.delete(person.key);
+      const on = box2.checked;
+      if (on) peopleOff.delete(person.key);
       else peopleOff.add(person.key);
+      document.querySelectorAll(".people input, .people-bar input").forEach((other) => {
+        if (other.dataset.person === person.key) other.checked = on;
+      });
       renderBoard();
     };
     const name = document.createElement("span");
     name.textContent = "@" + person.login;
     label.append(box2, name);
-    if (person.self) {
+    if (person.self && isDrawer) {
       const tag = document.createElement("span");
       tag.className = "self";
       tag.textContent = "自分";
