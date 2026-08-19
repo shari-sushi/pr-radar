@@ -668,6 +668,18 @@ function timeAgo(iso) {
   const d = Math.floor(s / 86400);
   return d < 30 ? d + "日前" : Math.floor(d / 30) + "か月前";
 }
+/* 作成日は 08/19 の形。年は普段は要らないので、ホバーの中でだけ出す */
+const mmdd = (iso) => {
+  const d = new Date(iso);
+  return String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0");
+};
+
+const fullStamp = (iso) => {
+  const d = new Date(iso);
+  return d.getFullYear() + "/" + mmdd(iso) + " " +
+    String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+};
+
 const daysOld = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 
 function showAlert(title, body) {
@@ -993,6 +1005,16 @@ function copyText(btn, icon, text) {
   navigator.clipboard.writeText(text).then(() => flash(ICON_DONE, "done"), () => flash(ICON_FAIL, "fail"));
 }
 
+/* 「08/19 - 3時間前」。左が作成日、右が最終更新からの経過。
+   並べただけでは何の日付か読み取れないので、ホバーで種類ごと見せる */
+function whenHtml(pr) {
+  const born = pr.created_at || pr.updated_at;
+  return '<span class="when" title="作成 ' + fullStamp(born) +
+    " ／ 最終更新 " + fullStamp(pr.updated_at) + '">' +
+    mmdd(born) + " - " + timeAgo(pr.updated_at) +
+    "</span>";
+}
+
 /* comment / review / inline。取れなかった PR では何も出さない */
 function countsHtml(c) {
   if (!c) return "";
@@ -1020,7 +1042,7 @@ function prRow(pr, i) {
       '<a class="t" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' + esc(pr.title) + "</a>" +
       '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
       '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
-        '<span class="sep">|</span>' + timeAgo(pr.updated_at) +
+        '<span class="sep">|</span>' + whenHtml(pr) +
         countsHtml(pr.counts) +
         (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
       "</span>" +
