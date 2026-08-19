@@ -141,6 +141,8 @@
   .memo-head { border-bottom: 1px solid var(--line); }
   .memo-head .pr { padding: 12px 14px; }
   .memo-head .pr .m { padding-right: 0; }
+  /* カードのフッターの下。左端はカードの本文に揃える */
+  .memo-head .wait-tag { margin: -2px 14px 12px; }
   .memo textarea {
     font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
     padding: 12px 14px; border: 0; background: var(--panel); color: var(--ink);
@@ -1307,7 +1309,15 @@ const memoOpen = () => memoFor !== null;
 
 function openMemo(pr) {
   memoFor = pr;
-  $("memohead").innerHTML = prCard(pr);   // 見出しはそのPRのカードそのもの
+  // 見出しはそのPRのカードそのもの。待ちはメモを書きながら決めることが多いので、
+  // カードのフッターの下に同じチェックを出しておく
+  $("memohead").innerHTML = prCard(pr) +
+    '<label class="wait-tag" title="待ちの印を付ける（表示は変わらない）">' +
+      '<input type="checkbox"' + (isWaiting(pr) ? " checked" : "") + ">" +
+      "<span>待ち</span>" +
+    "</label>";
+  const box = $("memohead").querySelector("input");
+  box.onchange = () => setWaiting(pr, box.checked);
   $("memotext").value = memoOf(pr);
   $("memoscrim").hidden = false;
   document.body.classList.add("locked");
