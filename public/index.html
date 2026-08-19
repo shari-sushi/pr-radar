@@ -124,6 +124,30 @@
   .settings.open { transform: none; visibility: visible; }
   body.locked { overflow: hidden; }
 
+  /* メモ。外側を押すと保存して閉じる */
+  .memo-scrim {
+    position: fixed; inset: 0; z-index: 20;
+    background: rgba(30, 41, 51, .7);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .memo-scrim[hidden] { display: none; }
+  .memo {
+    width: min(640px, 100%);
+    background: var(--panel); border: 1px solid var(--line);
+    display: grid; gap: 0; max-height: 100%;
+  }
+  /* 見出しはそのPRのカードそのもの。押せるのはタイトルのリンクだけ */
+  .memo-head { border-bottom: 1px solid var(--line); }
+  .memo-head .pr { padding: 12px 14px; }
+  .memo-head .pr .m { padding-right: 0; }
+  .memo textarea {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+    padding: 12px 14px; border: 0; background: var(--panel); color: var(--ink);
+    width: 100%; min-height: 220px; resize: vertical;
+  }
+  .memo textarea:focus { outline: none; }
+
   .drawer-head {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     border-bottom: 1px solid var(--line); padding-bottom: 12px;
@@ -266,6 +290,16 @@
   }
   .wait-tag:hover { color: var(--ink); }
   .wait-tag:has(input:checked) { color: var(--ink); }
+  .memo-tag {
+    display: inline-flex; padding: 5px; line-height: 0;
+    border: 0; border-radius: 3px; background: transparent;
+    color: var(--faint); cursor: pointer;
+    transition: color .12s, background-color .12s;
+  }
+  .memo-tag svg { width: 15px; height: 15px; }
+  .memo-tag:hover { color: var(--ink); background: #EDF1F2; border: 0; }
+  /* 書いてあるかどうかは、開かなくても分かるようにしておく */
+  .memo-tag.has { color: var(--ready); }
   .scope-tag {
     display: inline-flex; padding: 5px; line-height: 0;
     border: 0; border-radius: 3px; background: transparent;
@@ -293,7 +327,7 @@
     grid-column: 1 / -1;
     font-family: var(--mono); font-size: 11px; color: var(--dim);
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;
-    padding-right: 88px;
+    padding-right: 122px;
   }
   .pr .m .sep { color: var(--line); }
   /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
@@ -416,6 +450,13 @@
     </div>
   </div>
 
+  <div class="memo-scrim" id="memoscrim" hidden>
+    <div class="memo" id="memo" role="dialog" aria-modal="true" aria-label="この PR のメモ">
+      <div class="memo-head" id="memohead"></div>
+      <textarea id="memotext" spellcheck="false" placeholder="この PR についてのメモ。外側を押すと保存して閉じます"></textarea>
+    </div>
+  </div>
+
   <p class="kbd"><kbd>r</kbd> 更新 &nbsp; <kbd>s</kbd> 設定</p>
 </div>
 
@@ -438,6 +479,7 @@ const ICON_COPY = SVG + '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/
 const ICON_DOC = SVG + '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
 const ICON_DONE = SVG + '<path d="M20 6 9 17l-5-5"/></svg>';
 const ICON_FAIL = SVG + '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+const ICON_MEMO = SVG + '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>';
 /* 表示 / 伏せる のトグル */
 const ICON_EYE = SVG + '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_EYE_OFF = SVG + '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
@@ -551,6 +593,8 @@ const LABELS = { IN: "scope-in", OUT: "scope-out" };
 const LABEL_KEY = "pr-radar:labels";
 /* 「待ち」。scope とは別の軸なので、同じ入れ物に混ぜずキーを分ける */
 const WAIT_KEY = "pr-radar:waiting";
+/* PR ごとのメモ。本文なので、印とは別のキーに置く */
+const MEMO_KEY = "pr-radar:memos";
 /* 盤面の見え方。保存ボタンのある設定とは別に、押した時点で覚える */
 const VIEW_KEY = "pr-radar:view";
 
@@ -558,10 +602,12 @@ const VIEW_KEY = "pr-radar:view";
    増える一方になり、消す当てもないため */
 let labels = {};    // { "owner/repo#123": "scope-out" }
 let waiting = {};   // { "owner/repo#123": true }
+let memos = {};     // { "owner/repo#123": "本文" }
 
 function loadMarks() {
   labels = readJson(LABEL_KEY);
   waiting = readJson(WAIT_KEY);
+  memos = readJson(MEMO_KEY);
 }
 
 /* localStorage の小さな JSON。壊れていたら空で始める */
@@ -591,6 +637,18 @@ function setLabel(pr, value) {
   if (value === LABELS.IN) delete labels[prKey(pr)];
   else labels[prKey(pr)] = value;
   writeJson(LABEL_KEY, labels);
+}
+
+const memoOf = (pr) => {
+  const text = memos[prKey(pr)];
+  return typeof text === "string" ? text : "";
+};
+
+function setMemo(pr, text) {
+  const trimmed = text.trim();
+  if (trimmed) memos[prKey(pr)] = trimmed;
+  else delete memos[prKey(pr)];   // 空にしたら消す。空文字を残す意味がない
+  writeJson(MEMO_KEY, memos);
 }
 
 const isWaiting = (pr) => waiting[prKey(pr)] === true;
@@ -974,6 +1032,11 @@ function renderLane(lane, prs, emptyMsg) {
       rows +
     "</div>";
 
+  el.querySelectorAll(".memo-tag").forEach((btn) => {
+    const pr = prs[Number(btn.dataset.i)];
+    btn.onclick = () => openMemo(pr);
+  });
+
   // 「待ち」は覚えるだけ。レーンにも絞り込みにも効かないので引き直さない
   el.querySelectorAll(".wait-tag input").forEach((box) => {
     const pr = prs[Number(box.dataset.i)];
@@ -1043,7 +1106,8 @@ function countsHtml(c) {
     "</span>";
 }
 
-function prRow(pr, i) {
+/* カードそのもの。盤面の行と、メモの見出しで同じものを使う */
+function prCard(pr) {
   const repo = pr.base.repo.name;
   const age = daysOld(pr.updated_at);
   const chips = [];
@@ -1054,19 +1118,28 @@ function prRow(pr, i) {
     chips.push('<span class="chip label">' + esc(l.name) + "</span>");
   });
 
+  return '<div class="pr">' +
+    '<a class="t" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' + esc(pr.title) + "</a>" +
+    '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
+    '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
+      '<span class="sep">|</span>' + whenHtml(pr) +
+      countsHtml(pr.counts) +
+      (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
+    "</span>" +
+  "</div>";
+}
+
+/* 盤面に並ぶ1行。カードに操作を足したもの */
+function prRow(pr, i) {
   const inScope = labelOf(pr) === LABELS.IN;
 
   return '<div class="pr-row' + (inScope ? "" : " out") + '">' +
-    '<div class="pr">' +
-      '<a class="t" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' + esc(pr.title) + "</a>" +
-      '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
-      '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
-        '<span class="sep">|</span>' + whenHtml(pr) +
-        countsHtml(pr.counts) +
-        (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
-      "</span>" +
-    "</div>" +
+    prCard(pr) +
     '<div class="pr-actions">' +
+      '<button class="memo-tag' + (memoOf(pr) ? " has" : "") + '" type="button" data-i="' + i + '"' +
+        ' aria-label="メモ" title="' + (memoOf(pr) ? "メモがある" : "メモを書く") + '">' +
+        ICON_MEMO +
+      "</button>" +
       '<label class="wait-tag" title="待ちの印を付ける（表示は変わらない）">' +
         '<input type="checkbox" data-i="' + i + '"' + (isWaiting(pr) ? " checked" : "") + ">" +
         "<span>待ち</span>" +
@@ -1224,6 +1297,32 @@ function setSettings(open) {
   (open ? $("token") : $("toggle")).focus();
 }
 
+/* メモ。開いている間だけ、対象の PR を覚えておく */
+let memoFor = null;
+const memoOpen = () => memoFor !== null;
+
+function openMemo(pr) {
+  memoFor = pr;
+  $("memohead").innerHTML = prCard(pr);   // 見出しはそのPRのカードそのもの
+  $("memotext").value = memoOf(pr);
+  $("memoscrim").hidden = false;
+  document.body.classList.add("locked");
+  $("memotext").focus();
+}
+
+/* 保存ボタンは置かない。閉じる ＝ 保存 */
+function closeMemo() {
+  if (!memoOpen()) return;
+  setMemo(memoFor, $("memotext").value);
+  memoFor = null;
+  $("memoscrim").hidden = true;
+  document.body.classList.remove("locked");
+  renderBoard();   // メモの有無をボタンの色に出す
+}
+
+/* 外側だけで閉じる。カードのリンクや textarea を押しても閉じない */
+$("memoscrim").onclick = (e) => { if (e.target === $("memoscrim")) closeMemo(); };
+
 /* ヘッダーの目。伏せた PR を盤面に残すかどうかだけを切り替える */
 function paintBlind() {
   const b = $("blind");
@@ -1341,7 +1440,9 @@ $("test").onclick = async () => {
 };
 document.addEventListener("keydown", (e) => {
   // Esc は入力欄の中からも効かせる
+  if (e.key === "Escape" && memoOpen()) { closeMemo(); return; }
   if (e.key === "Escape" && settingsOpen()) { setSettings(false); return; }
+  if (memoOpen()) return;   // メモを書いている間は r / s を拾わない
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (e.key === "r") refresh();

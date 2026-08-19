@@ -51,12 +51,15 @@ author のチェック・ヘッダーの目・リポジトリの絞り込みは�
 const LABELS = { IN: "scope-in", OUT: "scope-out" };
 ```
 
-カードにはもうひとつ、目のマークの左に「待ち」のチェックボックスがある。こちらは覚えるだけで、レーンにも絞り込みにも見た目にも影響しない。scope とは別の軸なので、キーも分けてある。
+いちばん左のペンのボタンでメモを書ける。画面中央に textarea が出て、見出しにはその PR のカードがそのまま入る。外側を押すか Esc で保存して閉じる（保存ボタンは無い）。空にして閉じるとキーごと消える。メモがある PR はボタンが色付きになる。
+
+その右に「待ち」のチェックボックスがある。こちらは覚えるだけで、レーンにも絞り込みにも見た目にも影響しない。scope とは別の軸なので、キーも分けてある。
 
 | | 保存場所 | 形 |
 | --- | --- | --- |
 | 表示するか | `localStorage` の `pr-radar:labels` | `{ "owner/repo#123": "scope-out" }` |
 | 待ち | `localStorage` の `pr-radar:waiting` | `{ "owner/repo#123": true }` |
+| メモ | `localStorage` の `pr-radar:memos` | `{ "owner/repo#123": "CI 待ち" }` |
 | ヘッダーの目・author のチェック・リポジトリの絞り込み | `localStorage` の `pr-radar:view` | `{ "showOut": false, "off": ["octocat"], "hidden": ["example-org/repo-b"] }` |
 
 持つのは伏せたものだけ。既定の `scope-in` まで書くと、閉じた PR のぶんが増える一方で消す当てがないため、既定に戻したらキーごと消している。トークンと違って秘密ではないので暗号化はしていない。設定は `localStorage` に保存されるので、次回からは開くだけ。トークンは端末の外に出ない（送信先は `https://api.github.com` のみ）。
