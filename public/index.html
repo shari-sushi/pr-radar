@@ -17,6 +17,8 @@
     /* ボタン1個分の高さ（11.5px × 1.5 + 上下 padding 5px + 枠 1px）。
        px で置くのは、使う側の font-size を変えても高さがずれないようにするため */
     --btn-h: 29px;
+    /* メモの吹き出しが出るまで。設定から書き換わる */
+    --memo-delay: .9s;
     --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
     --mono: ui-monospace, SFMono-Regular, Menlo, "Roboto Mono", monospace;
   }
@@ -191,10 +193,20 @@
   .people .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   .repo-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
   .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
+  .slider { display: flex; align-items: center; gap: 10px; }
+  .slider .val {
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+    white-space: nowrap; min-width: 4.5em; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
   .field input, .field textarea {
     font-family: var(--mono); font-size: 12.5px;
     padding: 7px 9px; border: 1px solid var(--line); border-radius: 2px;
     background: #FBFCFC; color: var(--ink); width: 100%; resize: vertical;
+  }
+  /* つまみは枠も地色も要らない。.field input の指定を打ち消す */
+  .field input[type="range"] {
+    padding: 0; border: 0; background: transparent; accent-color: var(--ready);
   }
   .field input:focus, .field textarea:focus { border-color: var(--dim); outline: none; background: #fff; }
   .settings .actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -323,7 +335,7 @@
   /* 遅延は出るときだけ。離したら待たずに消える */
   .memo-tag[data-memo]:hover::after,
   .memo-tag[data-memo]:focus-visible::after {
-    opacity: 1; visibility: visible; transition-delay: .9s;
+    opacity: 1; visibility: visible; transition-delay: var(--memo-delay);
   }
   .scope-tag {
     display: inline-flex; padding: 5px; line-height: 0;
@@ -454,6 +466,14 @@
       <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false">
       <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
       <span class="hint" id="intervalout"></span>
+    </div>
+    <div class="field">
+      <label for="memodelay">メモの吹き出し</label>
+      <div class="slider">
+        <input id="memodelay" type="range" min="0" max="3" step="0.1">
+        <span class="val" id="memodelayout"></span>
+      </div>
+      <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。0 で待たずに出る。動かした時点で保存される。</span>
     </div>
     <div class="actions">
       <button class="save" id="save">保存して更新</button>
@@ -868,6 +888,20 @@ async function fetchCounts(repos) {
 let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
 let showOut = true;    // 伏せた PR を盤面に残すか。ヘッダーの目のボタンで切り替える
+let memoDelay = 0.9;   // メモの吹き出しが出るまでの秒数
+
+/* 0〜3秒。数でない値や範囲外は既定に戻す。null が 0（＝待たずに出る）へ
+   化けないよう、型から見る */
+function validDelay(value) {
+  if (typeof value !== "number" || !isFinite(value) || value < 0 || value > 3) return 0.9;
+  return Math.round(value * 10) / 10;
+}
+
+/* 遅延は CSS 変数で持つ。JS から触るのはこの1か所だけ */
+function applyMemoDelay() {
+  document.documentElement.style.setProperty("--memo-delay", memoDelay + "s");
+  $("memodelayout").textContent = memoDelay === 0 ? "すぐ" : memoDelay.toFixed(1) + " 秒";
+}
 
 /* 手で書き換えられていることもあるので、配列でなければ空、文字列以外は捨てる */
 const strings = (list) => (Array.isArray(list) ? list.filter((x) => typeof x === "string") : []);
@@ -875,6 +909,7 @@ const strings = (list) => (Array.isArray(list) ? list.filter((x) => typeof x ===
 function loadView() {
   const view = readJson(VIEW_KEY);
   showOut = view.showOut !== false;   // 知らない値や空なら「出す」側に倒す
+  memoDelay = validDelay(view.memoDelay);
   // 以前は設定側（cfg.off / cfg.hidden）に置いていた。残っていれば一度だけ
   // 引き継ぎ、以後は view だけを見る
   peopleOff = new Set(strings(Array.isArray(view.off) ? view.off : cfg.off));
@@ -885,7 +920,7 @@ function loadView() {
 }
 
 function saveView() {
-  writeJson(VIEW_KEY, { showOut, off: [...peopleOff], hidden: [...hiddenRepos] });
+  writeJson(VIEW_KEY, { showOut, memoDelay, off: [...peopleOff], hidden: [...hiddenRepos] });
 }
 const hiddenRepos = new Set();
 
@@ -1304,6 +1339,8 @@ function fillForm() {
   $("repos").value = cfg.repos;
   $("interval").value = cfg.interval;
   showInterval();
+  $("memodelay").value = memoDelay;
+  applyMemoDelay();
   laneOff = new Set(cfg.lanes || []);
   renderPeople();
   renderRepoFilter();
@@ -1377,6 +1414,13 @@ $("refresh").onclick = refresh;
 $("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
 $("interval").oninput = showInterval;
+
+/* 保存ボタンは通さない。動かした時点で効いて、そのまま覚える */
+$("memodelay").oninput = () => {
+  memoDelay = validDelay(Number($("memodelay").value));
+  applyMemoDelay();
+  saveView();
+};
 
 /* 式のままだと何秒か分からないので、結果をその場で添える */
 function showInterval() {
