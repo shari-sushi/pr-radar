@@ -298,8 +298,10 @@
   }
   .memo-tag svg { width: 15px; height: 15px; }
   .memo-tag:hover { color: var(--ink); background: #EDF1F2; border: 0; }
-  /* 書いてあるかどうかは、開かなくても分かるようにしておく */
-  .memo-tag.has { color: var(--ready); }
+  /* 書いてあるかどうかは、開かなくても分かるようにしておく。
+     15px のアイコンだと線の色差は読み取りにくいので、地色のほうを変える */
+  .memo-tag.has { background: #D5EBE3; }
+  .memo-tag.has:hover { background: #C2E0D5; color: var(--ink); }
   .scope-tag {
     display: inline-flex; padding: 5px; line-height: 0;
     border: 0; border-radius: 3px; background: transparent;
@@ -1132,12 +1134,14 @@ function prCard(pr) {
 /* 盤面に並ぶ1行。カードに操作を足したもの */
 function prRow(pr, i) {
   const inScope = labelOf(pr) === LABELS.IN;
+  const memo = memoOf(pr);
 
   return '<div class="pr-row' + (inScope ? "" : " out") + '">' +
     prCard(pr) +
     '<div class="pr-actions">' +
-      '<button class="memo-tag' + (memoOf(pr) ? " has" : "") + '" type="button" data-i="' + i + '"' +
-        ' aria-label="メモ" title="' + (memoOf(pr) ? "メモがある" : "メモを書く") + '">' +
+      '<button class="memo-tag' + (memo ? " has" : "") + '" type="button" data-i="' + i + '"' +
+        // 中身をそのままホバーに出す。開かずに読めるほうが速い。改行も残す
+        ' aria-label="メモ" title="' + esc(memo || "メモを書く") + '">' +
         ICON_MEMO +
       "</button>" +
       '<label class="wait-tag" title="待ちの印を付ける（表示は変わらない）">' +
