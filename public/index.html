@@ -1006,12 +1006,14 @@ function copyText(btn, icon, text) {
 }
 
 /* 「08/19 - 3時間前」。左が作成日、右が最終更新からの経過。
-   並べただけでは何の日付か読み取れないので、ホバーで種類ごと見せる */
+   並べただけでは何の日付か読み取れないので、ホバーで種類ごと見せる。
+   作成日が取れないときは --/-- と出す。updated_at で代用すると、
+   出したばかりの PR に見えてしまい、黙って嘘をつくことになる */
 function whenHtml(pr) {
-  const born = pr.created_at || pr.updated_at;
-  return '<span class="when" title="作成 ' + fullStamp(born) +
+  const born = pr.created_at;
+  return '<span class="when" title="作成 ' + (born ? fullStamp(born) : "不明") +
     " ／ 最終更新 " + fullStamp(pr.updated_at) + '">' +
-    mmdd(born) + " - " + timeAgo(pr.updated_at) +
+    (born ? mmdd(born) : "--/--") + " - " + timeAgo(pr.updated_at) +
     "</span>";
 }
 
