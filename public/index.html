@@ -470,10 +470,10 @@
     <div class="field">
       <label for="memodelay">メモの吹き出し</label>
       <div class="slider">
-        <input id="memodelay" type="range" min="0" max="5" step="0.5">
+        <input id="memodelay" type="range" min="0" step="1">
         <span class="val" id="memodelayout"></span>
       </div>
-      <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。0〜5秒を0.5秒刻みで。0 で待たずに出る。動かした時点で保存される。</span>
+      <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。</span>
     </div>
     <div class="actions">
       <button class="save" id="save">保存して更新</button>
@@ -890,12 +890,35 @@ let shownRepos = [];   // いまトグルとして並べている owner/repo
 let showOut = true;    // 伏せた PR を盤面に残すか。ヘッダーの目のボタンで切り替える
 let memoDelay = 0.9;   // メモの吹き出しが出るまでの秒数
 
-/* 0〜5秒。数でない値や範囲外は既定に戻す。null が 0（＝待たずに出る）へ
-   化けないよう、型から見る。丸めは 0.1 まで。つまみは 0.5 刻みだが、
-   既定の 0.9 のような刻みに乗らない値も、そのまま持てるようにしておく */
+/* つまみの目盛り。1秒までは 0.1 刻み、そこから上は 0.5 刻み。
+   刻みが一様でないので range の step では表せない。つまみにはこの配列の
+   添字を持たせる。そうすると、細かく効かせたい 0〜1 の範囲にも目盛りの
+   数だけ幅が割かれる（値をそのまま持たせると 1/5 の幅に潰れる） */
+const DELAY_STEPS = [
+  0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+  1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5
+];
+
+/* 数でない値や範囲外は既定に戻す。null が 0（＝待たずに出る）へ化けない
+   よう、型から見る */
 function validDelay(value) {
   if (typeof value !== "number" || !isFinite(value) || value < 0 || value > 5) return 0.9;
   return Math.round(value * 10) / 10;
+}
+
+/* いちばん近い目盛りの添字 */
+function delayIndex(seconds) {
+  let best = 0;
+  for (let i = 1; i < DELAY_STEPS.length; i++) {
+    if (Math.abs(DELAY_STEPS[i] - seconds) < Math.abs(DELAY_STEPS[best] - seconds)) best = i;
+  }
+  return best;
+}
+
+/* 目盛りに無い値（古い保存や手で書き換えた JSON）は近い目盛りに寄せる。
+   つまみの位置と横の数字が食い違ったままにならないように */
+function snapDelay(value) {
+  return DELAY_STEPS[delayIndex(validDelay(value))];
 }
 
 /* 遅延は CSS 変数で持つ。JS から触るのはこの1か所だけ */
@@ -910,7 +933,7 @@ const strings = (list) => (Array.isArray(list) ? list.filter((x) => typeof x ===
 function loadView() {
   const view = readJson(VIEW_KEY);
   showOut = view.showOut !== false;   // 知らない値や空なら「出す」側に倒す
-  memoDelay = validDelay(view.memoDelay);
+  memoDelay = snapDelay(view.memoDelay);
   // 以前は設定側（cfg.off / cfg.hidden）に置いていた。残っていれば一度だけ
   // 引き継ぎ、以後は view だけを見る
   peopleOff = new Set(strings(Array.isArray(view.off) ? view.off : cfg.off));
@@ -1340,7 +1363,8 @@ function fillForm() {
   $("repos").value = cfg.repos;
   $("interval").value = cfg.interval;
   showInterval();
-  $("memodelay").value = memoDelay;
+  $("memodelay").max = DELAY_STEPS.length - 1;   // 目盛りの数は配列で決める
+  $("memodelay").value = delayIndex(memoDelay);
   applyMemoDelay();
   laneOff = new Set(cfg.lanes || []);
   renderPeople();
@@ -1418,7 +1442,8 @@ $("interval").oninput = showInterval;
 
 /* 保存ボタンは通さない。動かした時点で効いて、そのまま覚える */
 $("memodelay").oninput = () => {
-  memoDelay = validDelay(Number($("memodelay").value));
+  const picked = DELAY_STEPS[Number($("memodelay").value)];
+  memoDelay = typeof picked === "number" ? picked : 0.9;
   applyMemoDelay();
   saveView();
 };
