@@ -356,6 +356,23 @@
     color: inherit; text-decoration: none; justify-self: start;
   }
   .pr .t:hover, .pr .t:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+  /* タイトルの下。押すとブランチ名をコピーする */
+  .pr .branch {
+    grid-column: 1 / -1; justify-self: start; max-width: 100%;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0;
+    text-transform: none; text-align: left; overflow-wrap: anywhere;
+    color: var(--faint); background: none; border: 0; border-radius: 0;
+    padding: 0; margin-top: 1px; cursor: pointer;
+  }
+  .pr .branch:hover {
+    color: var(--dim); background: none; border: 0;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .pr .branch.done, .pr .branch.done:hover { color: var(--ready); text-decoration: none; }
+  .pr .branch.done::after { content: " — コピーしました"; }
+  .pr .branch.fail, .pr .branch.fail:hover { color: var(--review); text-decoration: none; }
+  .pr .branch.fail::after { content: " — コピーできません"; }
+
   .pr .num {
     font-family: var(--mono); font-size: 11.5px; color: var(--faint);
     white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums;
@@ -1116,6 +1133,8 @@ function renderLane(lane, prs, emptyMsg) {
       rows +
     "</div>";
 
+  wireBranchCopy(el);
+
   el.querySelectorAll(".memo-tag").forEach((btn) => {
     const pr = prs[Number(btn.dataset.i)];
     btn.onclick = () => openMemo(pr);
@@ -1190,6 +1209,28 @@ function countsHtml(c) {
     "</span>";
 }
 
+/* ブランチ名。取れない PR では出さない */
+function branchHtml(pr) {
+  const ref = pr.head && pr.head.ref;
+  if (!ref) return "";
+  return '<button class="branch" type="button" data-branch="' + esc(ref) + '"' +
+    ' title="ブランチ名をコピー">' + esc(ref) + "</button>";
+}
+
+/* ブランチ名を押したらコピーする。盤面とメモの見出しの両方で使う */
+function wireBranchCopy(root) {
+  root.querySelectorAll(".branch").forEach((btn) => {
+    btn.onclick = () => {
+      const flash = (cls) => {
+        btn.classList.add(cls);
+        setTimeout(() => btn.classList.remove(cls), 1200);
+      };
+      if (!navigator.clipboard) { flash("fail"); return; }
+      navigator.clipboard.writeText(btn.dataset.branch).then(() => flash("done"), () => flash("fail"));
+    };
+  });
+}
+
 /* カードそのもの。盤面の行と、メモの見出しで同じものを使う */
 function prCard(pr) {
   const repo = pr.base.repo.name;
@@ -1205,6 +1246,7 @@ function prCard(pr) {
   return '<div class="pr">' +
     '<a class="t" href="' + esc(pr.html_url) + '" target="_blank" rel="noopener">' + esc(pr.title) + "</a>" +
     '<span class="num">' + esc(repo) + " #" + pr.number + "</span>" +
+    branchHtml(pr) +
     '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
       '<span class="sep">|</span>' + whenHtml(pr) +
       countsHtml(pr.counts) +
@@ -1400,7 +1442,8 @@ function openMemo(pr) {
       '<input type="checkbox"' + (isWaiting(pr) ? " checked" : "") + ">" +
       "<span>待ち</span>" +
     "</label>";
-  const box = $("memohead").querySelector("input");
+  wireBranchCopy($("memohead"));
+  const box = $("memohead").querySelector('input[type="checkbox"]');
   box.onchange = () => setWaiting(pr, box.checked);
   $("memotext").value = memoOf(pr);
   $("memoscrim").hidden = false;
