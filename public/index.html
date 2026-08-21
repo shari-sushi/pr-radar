@@ -187,6 +187,10 @@
     font-size: 10px; line-height: 1; letter-spacing: 0; color: var(--faint);
   }
   .help:hover, .help[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  /* つながっていないときは、直し方がここにあると分かるようにする */
+  .help.bad, .help.bad:hover, .help.bad[aria-expanded="true"] {
+    color: var(--review); border-color: var(--review); background: #FDECEE;
+  }
   .helpbox {
     border: 1px solid var(--line); border-left: 3px solid var(--dim);
     background: #FBFCFC; padding: 10px 12px;
@@ -1171,6 +1175,7 @@ async function refresh() {
   renderScope();
 
   if (!cfg.token) {
+    setTokenTrouble(true);
     showAlert(tokenNote ? "トークンを読み込めませんでした" : "アクセストークンがまだ入っていません",
       tokenNote || "設定を開いてトークンを入れると、プライベートリポジトリのPRが読めるようになります。");
     if (!autoOpened) { autoOpened = true; setSettings(true); }
@@ -1200,6 +1205,7 @@ async function refresh() {
   const meRaw = await mePromise;
   if (meRaw instanceof Error) {
     // リポジトリ側も同じ理由で失敗しているはずなので、原因が分かるこちらを出す
+    setTokenTrouble(true);
     $("status").textContent = "停止中";
     showAlert(meRaw.status === 401 ? "トークンが無効です" : "GitHubに接続できませんでした",
       meRaw.status === 401
@@ -1232,6 +1238,7 @@ async function refresh() {
     writeJson(CACHE_KEY, { items: fetched.map((it) => ({ repo: it.repo, pr: slim(it.pr) })) });
   }
 
+  setTokenTrouble(failed.length > 0);
   if (failed.length) showAlert("読めなかったリポジトリがあります", esc(failed.join(" / ")));
   else clearAlert();
 
@@ -1694,6 +1701,11 @@ $("scrim").onclick = () => setSettings(false);
 $("refresh").onclick = refresh;
 $("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
+/* つながっていないときだけ「?」を赤くする。直し方はほぼ必ずトークン側にある */
+function setTokenTrouble(bad) {
+  $("tokenhelp").classList.toggle("bad", bad);
+}
+
 $("tokenhelp").onclick = () => {
   const box = $("tokenhelpbox");
   const opening = box.hidden;
@@ -1784,6 +1796,7 @@ $("test").onclick = async () => {
   const repos = $("repos").value.split("\n").map((s) => s.trim()).filter(Boolean);
   const mates = $("mates").value.split(/[,\s]+/).filter(Boolean).map((s) => s.replace(/^@/, ""));
   const lines = [];
+  let tokenNg = false;   // トークンで説明が付く失敗だけ数える（author の綴り違いは別）
   const row = (cls, mark, text) =>
     lines.push('<div><span class="mark ' + cls + '">' + mark + "</span><span>" + esc(text) + "</span></div>");
   const paint = () => { out.innerHTML = lines.join(""); };
@@ -1791,7 +1804,10 @@ $("test").onclick = async () => {
   out.hidden = false;
   out.innerHTML = '<div><span class="mark wait">·</span><span>確認中…</span></div>';
 
-  if (!token) { row("ng", "×", "トークンが空です。入力してからもう一度押してください。"); paint(); return; }
+  if (!token) {
+    row("ng", "×", "トークンが空です。入力してからもう一度押してください。");
+    paint(); setTokenTrouble(true); return;
+  }
 
   let me;
   try {
@@ -1801,7 +1817,7 @@ $("test").onclick = async () => {
     row("ng", "×", e.status === 401
       ? "トークンが無効か期限切れです。発行し直してください。"
       : "GitHubに接続できません（" + e.message + "）");
-    paint(); return;
+    paint(); setTokenTrouble(true); return;
   }
   paint();
 
@@ -1820,6 +1836,7 @@ $("test").onclick = async () => {
       const prs = await gh("/repos/" + r + "/pulls?state=open&per_page=100", token);
       row("ok", "○", r + " — 開いているPR " + prs.length + "件");
     } catch (e) {
+      tokenNg = true;
       row("ng", "×", r + " — " + (
         e.status === 404 ? "見つかりません。リポジトリ名か、トークンの対象リポジトリに入っているか確認してください。" :
         e.status === 403 ? "権限が足りません。Pull requests: Read か、SSOの認可を確認してください。" :
@@ -1830,6 +1847,7 @@ $("test").onclick = async () => {
 
   if (gh.remaining) row("wait", "·", "1時間あたりの残り呼び出し回数 " + gh.remaining);
   paint();
+  setTokenTrouble(tokenNg);
 };
 document.addEventListener("keydown", (e) => {
   // Esc は入力欄の中からも効かせる
