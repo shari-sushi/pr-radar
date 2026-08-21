@@ -393,20 +393,20 @@
   .pr .m .cnt {
     display: inline-flex; gap: 8px; font-variant-numeric: tabular-nums;
     font-family: inherit; font-size: inherit; letter-spacing: inherit;
-    text-transform: none; color: inherit; cursor: pointer;
+    text-transform: none; color: inherit;
     background: none; border: 0; border-radius: 3px;
     /* 余白と同じだけ外へ引く。marginボックスの寸法は変わらないので、
        地色が付いても隣の位置はずれない */
     padding: 2px 5px; margin: -2px -5px;
+    /* 数が記録と同じなら、ボタンとして振る舞わない。ホバーしても何も
+       起きず、カーソルも変わらない。押しても覚え直すだけで意味がない */
+    cursor: default;
   }
   .pr .m .cnt .z { color: var(--faint); }
-  /* 押せることが分かるのはホバーの時だけでいい。枠は出さない */
-  .pr .m .cnt:hover { color: var(--ink); background: #EDF1F2; border: 0; }
-  .pr .m .cnt:hover .z { color: var(--dim); }
-  /* 前に見たときと数が違う。ホバーしなくても分かるように地色だけ敷く。
+  /* 前に見たときと数が違うときだけ、地色を敷いて押せるようにする。
      字の色は動かさない。11px の等幅では色差が読み取りにくく、
      0 を薄くしている区別まで潰れる */
-  .pr .m .cnt.new { background: #FBEDD6; }
+  .pr .m .cnt.new { background: #FBEDD6; cursor: pointer; }
   .pr .m .cnt.new:hover { background: #F5DFB8; }
   .chip {
     font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
