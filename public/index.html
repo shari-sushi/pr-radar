@@ -385,8 +385,17 @@
   }
   .pr .m .sep { color: var(--line); }
   /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
-  .pr .m .cnt { display: inline-flex; gap: 8px; font-variant-numeric: tabular-nums; }
+  .pr .m .cnt {
+    display: inline-flex; gap: 8px; font-variant-numeric: tabular-nums;
+    font-family: inherit; font-size: inherit; letter-spacing: inherit;
+    text-transform: none; color: inherit; cursor: pointer;
+    background: none; border: 0; border-radius: 0; padding: 0;
+  }
   .pr .m .cnt .z { color: var(--faint); }
+  .pr .m .cnt:hover { color: var(--ink); background: none; border: 0; }
+  /* 前に見たときと数が違う。枠も太さも足さない（並びがずれる）ので色だけ */
+  .pr .m .cnt.new { color: var(--ink); }
+  .pr .m .cnt.new .z { color: var(--dim); }
   .chip {
     font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
     padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.5;
@@ -657,6 +666,8 @@ const LABEL_KEY = "pr-radar:labels";
 const WAIT_KEY = "pr-radar:waiting";
 /* PR ごとのメモ。本文なので、印とは別のキーに置く */
 const MEMO_KEY = "pr-radar:memos";
+/* 最後に「見た」ときの comment / review / inline。増えたかどうかの基準 */
+const SEEN_KEY = "pr-radar:seen";
 /* 盤面の見え方。保存ボタンのある設定とは別に、押した時点で覚える */
 const VIEW_KEY = "pr-radar:view";
 
@@ -665,11 +676,13 @@ const VIEW_KEY = "pr-radar:view";
 let labels = {};    // { "owner/repo#123": "scope-out" }
 let waiting = {};   // { "owner/repo#123": true }
 let memos = {};     // { "owner/repo#123": "本文" }
+let seen = {};      // { "owner/repo#123": [comment, review, inline] }
 
 function loadMarks() {
   labels = readJson(LABEL_KEY);
   waiting = readJson(WAIT_KEY);
   memos = readJson(MEMO_KEY);
+  seen = readJson(SEEN_KEY);
 }
 
 /* localStorage の小さな JSON。壊れていたら空で始める */
@@ -711,6 +724,19 @@ function setMemo(pr, text) {
   if (trimmed) memos[prKey(pr)] = trimmed;
   else delete memos[prKey(pr)];   // 空にしたら消す。空文字を残す意味がない
   writeJson(MEMO_KEY, memos);
+}
+
+/* 覚えがなければ「まだ何も見ていない」＝ 0 件として比べる */
+const seenOf = (pr) => {
+  const v = seen[prKey(pr)];
+  const ok = Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number");
+  return ok ? v : [0, 0, 0];
+};
+
+function setSeen(key, now) {
+  if (now.every((n) => n === 0)) delete seen[key];   // 既定と同じものは持たない
+  else seen[key] = now;
+  writeJson(SEEN_KEY, seen);
 }
 
 const isWaiting = (pr) => waiting[prKey(pr)] === true;
@@ -1134,6 +1160,7 @@ function renderLane(lane, prs, emptyMsg) {
     "</div>";
 
   wireBranchCopy(el);
+  wireCounts(el);
 
   el.querySelectorAll(".memo-tag").forEach((btn) => {
     const pr = prs[Number(btn.dataset.i)];
@@ -1200,13 +1227,35 @@ function whenHtml(pr) {
     "</span>";
 }
 
-/* comment / review / inline。取れなかった PR では何も出さない */
-function countsHtml(c) {
+/* comment / review / inline。取れなかった PR では何も出さない。
+   まとめて1つのボタンで、押すといまの数を覚える。覚えた数と違うと濃くなる */
+function countsHtml(pr) {
+  const c = pr.counts;
   if (!c) return "";
+  const now = [c.comments, c.reviews, c.inline];
+  const was = seenOf(pr);
+  const changed = now.some((n, i) => n !== was[i]);
   const one = (label, n) => '<span class="' + (n ? "" : "z") + '">' + label + ": " + n + "</span>";
-  return '<span class="sep">|</span><span class="cnt">' +
-    one("comment", c.comments) + one("review", c.reviews) + one("inline", c.inline) +
-    "</span>";
+
+  return '<span class="sep">|</span>' +
+    '<button class="cnt' + (changed ? " new" : "") + '" type="button"' +
+      ' data-key="' + esc(prKey(pr)) + '" data-now="' + now.join(",") + '"' +
+      ' title="' + (changed
+        ? "前に見たとき comment: " + was[0] + " review: " + was[1] + " inline: " + was[2] + " — 押すといまの数を覚える"
+        : "押すといまの数を覚える") + '">' +
+      one("comment", c.comments) + one("review", c.reviews) + one("inline", c.inline) +
+    "</button>";
+}
+
+/* 盤面とメモの見出しの両方から押せる */
+function wireCounts(root) {
+  root.querySelectorAll(".cnt").forEach((btn) => {
+    btn.onclick = () => {
+      setSeen(btn.dataset.key, btn.dataset.now.split(",").map(Number));
+      btn.classList.remove("new");   // メモの見出しから押したときは、その場で戻す
+      renderBoard();                 // 盤面側も揃える
+    };
+  });
 }
 
 /* ブランチ名。取れない PR では出さない */
@@ -1249,7 +1298,7 @@ function prCard(pr) {
     branchHtml(pr) +
     '<span class="m">' + esc(pr.user ? pr.user.login : "?") +
       '<span class="sep">|</span>' + whenHtml(pr) +
-      countsHtml(pr.counts) +
+      countsHtml(pr) +
       (chips.length ? '<span class="sep">|</span>' + chips.join(" ") : "") +
     "</span>" +
   "</div>";
@@ -1443,6 +1492,7 @@ function openMemo(pr) {
       "<span>待ち</span>" +
     "</label>";
   wireBranchCopy($("memohead"));
+  wireCounts($("memohead"));
   const box = $("memohead").querySelector('input[type="checkbox"]');
   box.onchange = () => setWaiting(pr, box.checked);
   $("memotext").value = memoOf(pr);
