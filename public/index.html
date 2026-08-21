@@ -699,6 +699,8 @@ const WAIT_KEY = "pr-radar:waiting";
 const MEMO_KEY = "pr-radar:memos";
 /* 最後に「見た」ときの comment / review / inline。増えたかどうかの基準 */
 const SEEN_KEY = "pr-radar:seen";
+/* 前回の取得結果。開いた瞬間に出すためだけのもので、正はいつでも GitHub 側 */
+const CACHE_KEY = "pr-radar:cache";
 /* 盤面の見え方。保存ボタンのある設定とは別に、押した時点で覚える */
 const VIEW_KEY = "pr-radar:view";
 
@@ -958,6 +960,34 @@ async function fetchCounts(repos) {
   return out;
 }
 
+/* 盤面が使う項目だけ抜く。REST の生レスポンスは1件で数KBあり、
+   そのまま置くと localStorage を食い潰す */
+function slim(pr) {
+  return {
+    number: pr.number, title: pr.title, html_url: pr.html_url, draft: !!pr.draft,
+    created_at: pr.created_at, updated_at: pr.updated_at,
+    user: { login: pr.user ? pr.user.login : "" },
+    base: { repo: { name: pr.base.repo.name, full_name: pr.base.repo.full_name } },
+    head: { ref: pr.head ? pr.head.ref : "" },
+    labels: (pr.labels || []).slice(0, 2).map((l) => ({ name: l.name })),
+    requested_reviewers: (pr.requested_reviewers || []).map((u) => ({ login: u.login })),
+    counts: pr.counts || null
+  };
+}
+
+/* 前回の内容を読む。設定から消えたリポジトリのぶんは捨てる */
+function loadCache() {
+  const cached = readJson(CACHE_KEY);
+  if (!Array.isArray(cached.items)) return false;
+  const live = new Set(cfg.repos.split("\n").map((x) => x.trim()).filter(Boolean));
+  const items = cached.items.filter((it) =>
+    it && typeof it.repo === "string" && live.has(it.repo) &&
+    it.pr && it.pr.base && it.pr.base.repo);
+  if (!items.length) return false;
+  fetched = items;
+  return true;
+}
+
 /* 直近の取得結果。フィルタはこれを絞り直すだけで、取り直しはしない */
 let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
@@ -1110,24 +1140,11 @@ async function refresh() {
   }
 
   $("status").textContent = "読み込み中…";
-  let meRaw;
-  try {
-    meRaw = (await gh("/user")).login;
-  } catch (e) {
-    $("status").textContent = "停止中";
-    showAlert(e.status === 401 ? "トークンが無効です" : "GitHubに接続できませんでした",
-      e.status === 401
-        ? "設定から入れ直してください。期限切れか、スコープに <code>repo</code> が入っていない可能性があります。"
-        : "少し待ってから更新を押してください。");
-    return;
-  }
 
-  // 自分のログインを覚えておくと、次回はトークンを叩く前から一覧に自分を出せる
-  if (cfg.me !== meRaw) {
-    cfg.me = meRaw;
-    await saveConfig();
-    renderPeople();
-  }
+  // /user は「自分が誰か」を覚えるためだけのもので、PR の取得を待たせる理由がない。
+  // 2回目以降は cfg.me が保存済みなので、待つとまるまる1往復ぶん損する。
+  // ここで then を付けておくので、失敗しても未処理の rejection にはならない
+  const mePromise = gh("/user").then((u) => u.login, (err) => err);
 
   const failed = [];
 
@@ -1141,6 +1158,24 @@ async function refresh() {
     fetchCounts(repos).catch(() => new Map())
   ]);
 
+  const meRaw = await mePromise;
+  if (meRaw instanceof Error) {
+    // リポジトリ側も同じ理由で失敗しているはずなので、原因が分かるこちらを出す
+    $("status").textContent = "停止中";
+    showAlert(meRaw.status === 401 ? "トークンが無効です" : "GitHubに接続できませんでした",
+      meRaw.status === 401
+        ? "設定から入れ直してください。期限切れか、スコープに <code>repo</code> が入っていない可能性があります。"
+        : "少し待ってから更新を押してください。");
+    return;
+  }
+
+  // 自分のログインを覚えておくと、次回はトークンを叩く前から一覧に自分を出せる
+  if (cfg.me !== meRaw) {
+    cfg.me = meRaw;
+    await saveConfig();
+    renderPeople();
+  }
+
   // どのリポジトリから来た PR かを持たせておく。振り分けは renderBoard がやる
   fetched = [];
   results.forEach((list, i) => {
@@ -1151,6 +1186,12 @@ async function refresh() {
   });
 
   renderBoard();
+
+  // 全部読めたときだけ残す。一部が落ちた結果を残すと、次に開いたときに
+  // その PR が消えた状態で始まってしまう
+  if (!failed.length) {
+    writeJson(CACHE_KEY, { items: fetched.map((it) => ({ repo: it.repo, pr: slim(it.pr) })) });
+  }
 
   if (failed.length) showAlert("読めなかったリポジトリがあります", esc(failed.join(" / ")));
   else clearAlert();
@@ -1772,6 +1813,11 @@ document.addEventListener("keydown", (e) => {
   paintBlind();
   paintWaitFilter();
   fillForm();
+  // 前回の内容を先に出す。取り直しは裏で走り、終わったら差し替わる
+  if (loadCache()) {
+    renderBoard();
+    $("status").textContent = "前回の内容";
+  }
   schedule();
   refresh();
 })();

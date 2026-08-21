@@ -69,6 +69,7 @@ PR名の下にはブランチ名が薄く出る。押すとクリップボード
 | 待ち | `localStorage` の `pr-radar:waiting` | `{ "owner/repo#123": true }` |
 | メモ | `localStorage` の `pr-radar:memos` | `{ "owner/repo#123": "CI 待ち" }` |
 | 最後に見た件数 | `localStorage` の `pr-radar:seen` | `{ "owner/repo#123": [1, 1, 5] }` |
+| 前回の取得結果 | `localStorage` の `pr-radar:cache` | 盤面が使う項目だけに削ったもの。開いた瞬間に出すためだけで、正はいつでも GitHub 側 |
 | ヘッダーの目・author のチェック・リポジトリの絞り込み・吹き出しの遅延 | `localStorage` の `pr-radar:view` | `{ "showOut": false, "memoDelay": 0.9, "off": ["octocat"], "hidden": ["example-org/repo-b"] }` |
 
 持つのは伏せたものだけ。既定の `scope-in` まで書くと、閉じた PR のぶんが増える一方で消す当てがないため、既定に戻したらキーごと消している。トークンと違って秘密ではないので暗号化はしていない。設定は `localStorage` に保存されるので、次回からは開くだけ。トークンは端末の外に出ない（送信先は `https://api.github.com` のみ）。
