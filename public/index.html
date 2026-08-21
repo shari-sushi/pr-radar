@@ -179,6 +179,31 @@
   .field > label::after {
     content: ""; flex: 1 1 auto; height: 1px; background: var(--line);
   }
+  /* 見出しの脇の「?」。開くと下に手順が出る */
+  .help {
+    flex: none; width: 16px; height: 16px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%; border: 1px solid var(--line);
+    font-size: 10px; line-height: 1; letter-spacing: 0; color: var(--faint);
+  }
+  .help:hover, .help[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  .helpbox {
+    border: 1px solid var(--line); border-left: 3px solid var(--dim);
+    background: #FBFCFC; padding: 10px 12px;
+    font-size: 11.5px; line-height: 1.65; color: var(--dim);
+    text-transform: none; letter-spacing: 0; font-weight: 400;
+  }
+  .helpbox[hidden] { display: none; }
+  .helpbox ol { margin: 0; padding-left: 1.4em; }
+  .helpbox li { margin-bottom: 4px; }
+  .helpbox li:last-child { margin-bottom: 0; }
+  .helpbox p { margin: 9px 0 0; }
+  .helpbox code {
+    font-family: var(--mono); font-size: 11px;
+    background: #F0F3F4; padding: 1px 4px; border-radius: 2px;
+  }
+  .helpbox a { color: var(--ready); }
+
   .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.45; }
   .field .hint.warn { color: var(--review); }
   .field .hint.warn[hidden] { display: none; }
@@ -484,9 +509,23 @@
       <button id="close" aria-label="閉じる">✕</button>
     </div>
     <div class="field">
-      <label for="token">アクセストークン</label>
+      <label for="token">アクセストークン
+        <button class="help" id="tokenhelp" type="button" aria-expanded="false" aria-controls="tokenhelpbox" aria-label="トークンの取り方">?</button>
+      </label>
       <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
-      <span class="hint">GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens で発行。Resource owner を example-org、Repository access を対象の3つ、権限は <code>Pull requests: Read-only</code> だけ。org の設定によっては承認待ちになる。classic token の <code>repo</code> は書き込み権限も含むので使わない。</span>
+      <div class="helpbox" id="tokenhelpbox" hidden>
+        <ol>
+          <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> を開く（Fine-grained token）</li>
+          <li><b>Resource owner</b> — <code>example-org</code></li>
+          <li><b>Expiration</b> — 短めに。90日など</li>
+          <li><b>Repository access</b> — Only select repositories → 対象の3つだけ</li>
+          <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ</li>
+          <li><b>Generate token</b> → 出てきた値をこの欄に貼る</li>
+        </ol>
+        <p><code>Metadata: Read-only</code> は自動で付く（外せない）。<code>Contents</code> は付けないこと —— 付けるとリポジトリを丸ごと落とせるトークンになる。</p>
+        <p>org の設定によっては、発行後にオーナーの承認待ちになる。SAML SSO が必須なら Configure SSO で認可する。</p>
+        <p>classic token（<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>）は <code>repo</code> スコープに書き込み権限まで含むので使わない。</p>
+      </div>
       <span class="hint warn" id="cryptonote" hidden></span>
     </div>
     <div class="field">
@@ -1655,6 +1694,13 @@ $("scrim").onclick = () => setSettings(false);
 $("refresh").onclick = refresh;
 $("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
+$("tokenhelp").onclick = () => {
+  const box = $("tokenhelpbox");
+  const opening = box.hidden;
+  box.hidden = !opening;
+  $("tokenhelp").setAttribute("aria-expanded", String(opening));
+};
+
 $("interval").oninput = showInterval;
 $("quietfrom").oninput = showQuiet;
 $("quietto").oninput = showQuiet;

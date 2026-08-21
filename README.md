@@ -97,7 +97,8 @@ pr-radar/
 
 ## トークン
 
-Fine-grained personal access token を推奨。
+Fine-grained personal access token を推奨。手順は設定画面の「アクセストークン」の脇にある <kbd>?</kbd> にも同じものが出る。
+
 
 | 項目 | 値 |
 | --- | --- |
