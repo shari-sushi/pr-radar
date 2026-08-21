@@ -389,10 +389,15 @@
     display: inline-flex; gap: 8px; font-variant-numeric: tabular-nums;
     font-family: inherit; font-size: inherit; letter-spacing: inherit;
     text-transform: none; color: inherit; cursor: pointer;
-    background: none; border: 0; border-radius: 0; padding: 0;
+    background: none; border: 0; border-radius: 3px;
+    /* 余白と同じだけ外へ引く。marginボックスの寸法は変わらないので、
+       地色が付いても隣の位置はずれない */
+    padding: 2px 5px; margin: -2px -5px;
   }
   .pr .m .cnt .z { color: var(--faint); }
-  .pr .m .cnt:hover { color: var(--ink); background: none; border: 0; }
+  /* 押せることが分かるのはホバーの時だけでいい。枠は出さない */
+  .pr .m .cnt:hover { color: var(--ink); background: #EDF1F2; border: 0; }
+  .pr .m .cnt:hover .z { color: var(--dim); }
   /* 前に見たときと数が違う。枠も太さも足さない（並びがずれる）ので色だけ */
   .pr .m .cnt.new { color: var(--ink); }
   .pr .m .cnt.new .z { color: var(--dim); }
