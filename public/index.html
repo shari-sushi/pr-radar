@@ -398,9 +398,11 @@
   /* 押せることが分かるのはホバーの時だけでいい。枠は出さない */
   .pr .m .cnt:hover { color: var(--ink); background: #EDF1F2; border: 0; }
   .pr .m .cnt:hover .z { color: var(--dim); }
-  /* 前に見たときと数が違う。枠も太さも足さない（並びがずれる）ので色だけ */
-  .pr .m .cnt.new { color: var(--ink); }
+  /* 前に見たときと数が違う。ホバーしなくても分かるように地色を敷く。
+     字の色だけだと 11px では読み取りにくい（メモのボタンと同じ理由） */
+  .pr .m .cnt.new { color: var(--ink); background: #FBEDD6; }
   .pr .m .cnt.new .z { color: var(--dim); }
+  .pr .m .cnt.new:hover { background: #F5DFB8; }
   .chip {
     font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
     padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.5;
