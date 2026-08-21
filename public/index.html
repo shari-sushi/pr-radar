@@ -193,6 +193,11 @@
   .people .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   .repo-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
   .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
+  .times { display: flex; align-items: center; gap: 8px; }
+  .times input { flex: 1 1 0; min-width: 0; }
+  .times .to {
+    flex: none; font-family: var(--mono); font-size: 12px; color: var(--faint);
+  }
   .slider { display: flex; align-items: center; gap: 10px; }
   .slider .val {
     font-family: var(--mono); font-size: 12px; color: var(--dim);
@@ -501,6 +506,16 @@
       <span class="hint" id="intervalout"></span>
     </div>
     <div class="field">
+      <label for="quietfrom">自動更新を止める時間帯</label>
+      <div class="times">
+        <input id="quietfrom" type="time">
+        <span class="to">〜</span>
+        <input id="quietto" type="time">
+      </div>
+      <span class="hint">この時間帯は自動更新しない。更新ボタンと <code>r</code> はいつでも効く。<code>19:00 〜 09:00</code> のように日をまたぐ指定もできる。空にすると止めない。</span>
+      <span class="hint" id="quietout"></span>
+    </div>
+    <div class="field">
       <label for="memodelay">メモの吹き出し</label>
       <div class="slider">
         <input id="memodelay" type="range" min="0" step="1">
@@ -546,6 +561,8 @@ const DEFAULTS = {
   mates: "octocat",
   repos: "example-org/repo-a\nexample-org/repo-b\nexample-org/repo-c",
   interval: 60,
+  quietFrom: "",  // 自動更新を止める時間帯。空なら止めない
+  quietTo: "",
   me: "",     // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
   lanes: []   // 盤面から外すレーン（LANES の id）。既定は全部表示
 };
@@ -1128,7 +1145,9 @@ async function refresh() {
 
   const t = new Date();
   const hh = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
-  $("status").innerHTML = "更新 <b>" + hh + "</b>" + (gh.remaining ? " · 残 " + gh.remaining : "");
+  $("status").innerHTML = "更新 <b>" + hh + "</b>" +
+    (inQuietHours() ? " · 自動更新 停止中" : "") +
+    (gh.remaining ? " · 残 " + gh.remaining : "");
 }
 
 /* ---------- render ---------- */
@@ -1461,6 +1480,9 @@ function fillForm() {
   $("repos").value = cfg.repos;
   $("interval").value = cfg.interval;
   showInterval();
+  $("quietfrom").value = cfg.quietFrom || "";
+  $("quietto").value = cfg.quietTo || "";
+  showQuiet();
   $("memodelay").max = DELAY_STEPS.length - 1;   // 目盛りの数は配列で決める
   $("memodelay").value = delayIndex(memoDelay);
   applyMemoDelay();
@@ -1469,10 +1491,35 @@ function fillForm() {
   renderRepoFilter();
   renderLaneFilter();
 }
+/* "09:00" を 540 に。読めなければ null */
+function parseHM(v) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(v == null ? "" : v).trim());
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]);
+  return (h < 24 && min < 60) ? h * 60 + min : null;
+}
+
+/* いま自動更新を止める時間帯か。19:00〜09:00 のように日をまたぐ指定も受ける。
+   片方だけの指定や、開始と終了が同じものは「止めない」に倒す */
+function inQuietHours(at) {
+  const from = parseHM(cfg.quietFrom);
+  const to = parseHM(cfg.quietTo);
+  if (from === null || to === null || from === to) return false;
+  const now = at || new Date();
+  const m = now.getHours() * 60 + now.getMinutes();
+  return from < to ? (m >= from && m < to) : (m >= from || m < to);
+}
+
+/* タイマーから呼ぶほうだけ止める。更新ボタンと r はいつでも効く */
+function autoRefresh() {
+  if (inQuietHours()) return;
+  refresh();
+}
+
 function schedule() {
   if (timer) clearInterval(timer);
   const s = evalSeconds(cfg.interval);
-  if (s !== null && s >= 15) timer = setInterval(refresh, s * 1000);
+  if (s !== null && s >= 15) timer = setInterval(autoRefresh, s * 1000);
 }
 
 /* 設定ドロワー。開閉はクラスで持つ（hidden だと transition が効かないため） */
@@ -1539,6 +1586,28 @@ $("refresh").onclick = refresh;
 $("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
 $("interval").oninput = showInterval;
+$("quietfrom").oninput = showQuiet;
+$("quietto").oninput = showQuiet;
+
+/* 片方だけ入れた状態のまま気づかない、が起きやすいので言葉で返す */
+function showQuiet() {
+  const el = $("quietout");
+  const from = $("quietfrom").value, to = $("quietto").value;
+  el.classList.remove("warn");
+  if (!from && !to) { el.textContent = "止めない"; return; }
+  if (!from || !to) {
+    el.textContent = "開始と終了の両方を入れてください（片方だけでは止まりません）";
+    el.classList.add("warn");
+    return;
+  }
+  if (from === to) {
+    el.textContent = "開始と終了が同じです（止まりません）";
+    el.classList.add("warn");
+    return;
+  }
+  const wraps = parseHM(from) > parseHM(to);
+  el.textContent = from + " 〜 " + to + (wraps ? "（翌日）" : "") + " は自動更新しない";
+}
 
 /* 保存ボタンは通さない。動かした時点で効いて、そのまま覚える */
 $("memodelay").oninput = () => {
@@ -1573,6 +1642,8 @@ $("save").onclick = async () => {
     mates: $("mates").value.trim(),
     repos: $("repos").value.trim(),
     interval: $("interval").value.trim(),
+    quietFrom: $("quietfrom").value,
+    quietTo: $("quietto").value,
     me: cfg.me,
     lanes: [...laneOff]
   };
