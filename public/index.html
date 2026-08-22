@@ -456,6 +456,18 @@
   .chip.stale { color: #B26B00; }
   .chip.rot   { color: var(--review); }
   .chip.label { text-transform: none; letter-spacing: 0; color: var(--faint); }
+  .chip.merged { color: var(--ready); }
+  .chip.shut   { color: var(--other); }
+
+  /* レーンの末尾。次のページを読む */
+  .more {
+    display: block; width: 100%; text-align: center;
+    border: 0; border-top: 1px solid #EDF0F1; border-radius: 0;
+    padding: 9px 14px; background: none; color: var(--dim);
+    font-size: 11px; letter-spacing: .06em; text-transform: none;
+  }
+  .more:hover { background: #F7F9F9; color: var(--ink); border: 0; border-top: 1px solid #EDF0F1; }
+  .more[disabled], .more[disabled]:hover { color: var(--faint); background: none; cursor: default; }
 
   .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
 
@@ -710,7 +722,7 @@ const LANES = [
   { id: "draft",  rail: "下書",   title: "自分たちのPR — Draft",       sub: "作業中。放置してないか確認用" },
   { id: "review", rail: "依頼",   title: "自分にレビュー依頼が来ている", sub: "Reviewer に指名されているもの" },
   { id: "other",  rail: "他",     title: "ほかの人のPR",                sub: "3リポジトリで今開いている残り全部" },
-  { id: "closed", rail: "閉",     title: "閉じたPR",                    sub: "マージ済み・未マージを新しい順に", tab: "closed" }
+  { id: "closed", rail: "閉",     title: "閉じたPR",                    sub: "マージ済み・未マージを新しい順に", tab: "closed", paged: true }
 ];
 /* tab を書いていないものは open。既定のタブに寄せておく */
 for (const l of LANES) if (!l.tab) l.tab = "open";
@@ -1094,6 +1106,48 @@ function loadCache() {
   return true;
 }
 
+/* 閉じた PR。open とは別に持つ。混ぜると laneOf() の振り分けが壊れる */
+const CLOSED_PER_PAGE = 30;
+let fetchedClosed = null;   // [{ repo, pr }] | null（null は「まだ取っていない」）
+let closedPage = 0;         // 取り終わったページ数
+let closedLoading = false;
+let closedEnd = false;      // これ以上ない
+
+/* 期間で絞る手段がこの endpoint には無いので、件数で取って全部出す。
+   取ったのに出さない、という無駄を作らないため */
+async function fetchClosedPage(page) {
+  const repos = cfg.repos.split("\n").map((x) => x.trim()).filter(Boolean);
+  const lists = await Promise.all(repos.map(async (r) => {
+    try {
+      return await gh("/repos/" + r + "/pulls?state=closed&per_page=" + CLOSED_PER_PAGE +
+        "&page=" + page + "&sort=updated&direction=desc");
+    } catch (e) {
+      return [];
+    }
+  }));
+  const items = [];
+  lists.forEach((list, i) => { for (const pr of list) items.push({ repo: repos[i], pr }); });
+  // どのリポジトリも1ページ分に満たなければ、次を押しても何も出ない
+  return { items, end: lists.every((l) => l.length < CLOSED_PER_PAGE) };
+}
+
+async function loadClosed(reset) {
+  if (closedLoading) return;
+  closedLoading = true;
+  if (reset) { fetchedClosed = []; closedPage = 0; closedEnd = false; }
+  renderBoard();   // ボタンを「読み込み中…」にする
+
+  try {
+    const got = await fetchClosedPage(closedPage + 1);
+    fetchedClosed = (fetchedClosed || []).concat(got.items);
+    closedPage += 1;
+    closedEnd = got.end;
+  } finally {
+    closedLoading = false;
+  }
+  renderBoard();
+}
+
 /* 直近の取得結果。フィルタはこれを絞り直すだけで、取り直しはしない */
 let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
@@ -1215,19 +1269,27 @@ function laneOf(pr, me, listed, ours) {
 /* 取得済みの結果をフィルタしてレーンに流し込む。
    author の振り分けもここでやる。取り直さずにチェックへ即応させるため */
 function renderBoard() {
-  if (!fetched) return;
+  if (!fetched && !fetchedClosed) return;
   const me = (cfg.me || "").toLowerCase();
   const listed = new Set(peopleList().map((p) => p.key));               // Author 欄に並んでいる人
   const ours = new Set([...listed].filter((k) => !peopleOff.has(k)));   // うちチェックが入っている人
 
-  const buckets = { ready: [], draft: [], review: [], other: [] };
-  for (const item of fetched) {
+  const buckets = { ready: [], draft: [], review: [], other: [], closed: [] };
+  for (const item of fetched || []) {
     if (hiddenRepos.has(item.repo)) continue;
     if (!showOut && labelOf(item.pr) === LABELS.OUT) continue;
     if (!showWaiting && isWaiting(item.pr)) continue;
     const lane = laneOf(item.pr, me, listed, ours);
     if (!lane) continue;
     buckets[lane].push(item.pr);
+  }
+
+  // closed は author の振り分けにも「待ち」の絞り込みにも関係しない。
+  // 済んだものを待つことはないし、隠すと探せなくなるだけ
+  for (const item of fetchedClosed || []) {
+    if (hiddenRepos.has(item.repo)) continue;
+    if (!showOut && labelOf(item.pr) === LABELS.OUT) continue;
+    buckets.closed.push(item.pr);
   }
   for (const k in buckets) buckets[k].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
@@ -1334,6 +1396,10 @@ function renderLane(lane, prs, emptyMsg) {
 
   // コピーは「いま出ている分」が対象。中身が無いときはボタンを出さない
   const canCopy = lane.copy && prs && prs.length > 0;
+  const more = (lane.paged && prs)
+    ? '<button class="more" type="button"' + (closedLoading || closedEnd ? " disabled" : "") + ">" +
+        (closedLoading ? "読み込み中…" : closedEnd ? "これ以上ありません" : "もっと見る") + "</button>"
+    : "";
   const el = $("lane-" + lane.id);
 
   el.innerHTML =
@@ -1348,8 +1414,11 @@ function renderLane(lane, prs, emptyMsg) {
             "</span>"
           : "") +
       "</div>" +
-      rows +
+      rows + more +
     "</div>";
+
+  const moreBtn = el.querySelector(".more");
+  if (moreBtn) moreBtn.onclick = () => loadClosed(false);
 
   wireBranchCopy(el);
   wireCounts(el);
@@ -1488,9 +1557,16 @@ function prCard(pr) {
   const repo = pr.base.repo.name;
   const age = daysOld(pr.updated_at);
   const chips = [];
-  if (pr.draft) chips.push('<span class="chip draft">draft</span>');
-  if (age >= 14) chips.push('<span class="chip rot">' + age + "日 停滞</span>");
-  else if (age >= 7) chips.push('<span class="chip stale">' + age + "日 停滞</span>");
+  if (pr.state === "closed") {
+    // 済んだものに draft も停滞も無い。代わりにマージされたかどうかを出す
+    chips.push(pr.merged_at
+      ? '<span class="chip merged">merged</span>'
+      : '<span class="chip shut">closed</span>');
+  } else {
+    if (pr.draft) chips.push('<span class="chip draft">draft</span>');
+    if (age >= 14) chips.push('<span class="chip rot">' + age + "日 停滞</span>");
+    else if (age >= 7) chips.push('<span class="chip stale">' + age + "日 停滞</span>");
+  }
   (pr.labels || []).slice(0, 2).forEach((l) => {
     chips.push('<span class="chip label">' + esc(l.name) + "</span>");
   });
@@ -1813,6 +1889,8 @@ function setTab(tab) {
   paintTabs();
   renderLaneFilter();   // タブごとに畳めるレーンが変わる
   syncLanes();
+  // closed は開いたときに初めて取りに行く。普段の更新には足さない
+  if (tab === "closed" && fetchedClosed === null) loadClosed(true);
 }
 
 $("tab-open").onclick = () => setTab("open");
@@ -1837,7 +1915,11 @@ $("showall").onclick = () => { hiddenRepos.clear(); syncRepos(); };
 $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
 $("scrim").onclick = () => setSettings(false);
-$("refresh").onclick = refresh;
+$("refresh").onclick = () => {
+  refresh();
+  // 自動更新では取り直さない。ページを送った分が毎回巻き戻ってしまうため
+  if (activeTab === "closed") loadClosed(true);
+};
 $("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
 /* つながっていないときだけ「?」を赤くする。直し方はほぼ必ずトークン側にある */
@@ -2059,5 +2141,6 @@ document.addEventListener("keydown", (e) => {
   }
   schedule();
   refresh();
+  if (activeTab === "closed") loadClosed(true);
 })();
 </script>
