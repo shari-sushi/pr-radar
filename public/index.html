@@ -670,7 +670,7 @@
       <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-days">自動更新する曜日<span class="caret"></span></button>
       <div class="repo-toggles" id="dayfilter"></div>
       <div class="fold" id="f-days" hidden>
-        <span class="hint">押した時点では効かない。保存すると自動更新に反映される。</span>
+        <span class="hint">押した時点で保存され、自動更新に反映される。</span>
       </div>
       <span class="hint" id="dayout"></span>
     </div>
@@ -837,14 +837,26 @@ async function loadConfig() {
   }
 }
 
-async function saveConfig() {
+/* 平文の側だけを書く。トークンには触らない。
+   即時保存はこちらだけを通す —— 暗号化は非同期なので、打っている途中に
+   走らせると完了順が入れ替わって古いトークンが後から乗る恐れがある */
+function saveConfigJson() {
   const { token, ...rest } = cfg;
   try {
     localStorage.setItem(KEY, JSON.stringify(rest));
-    if (token && cryptoKey) localStorage.setItem(TOKEN_KEY, await encryptToken(token));
-    else localStorage.removeItem(TOKEN_KEY);
   } catch (e) {
     showAlert("設定を保存できませんでした",
+      "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
+  }
+}
+
+async function saveConfig() {
+  saveConfigJson();
+  try {
+    if (cfg.token && cryptoKey) localStorage.setItem(TOKEN_KEY, await encryptToken(cfg.token));
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch (e) {
+    showAlert("トークンを保存できませんでした",
       "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
   }
 }
@@ -1770,7 +1782,7 @@ function renderRepoFilter() {
   }
 }
 
-/* 盤面に出すレーン。保存するまでは画面側だけで持つ */
+/* 盤面に出すレーン。押した時点で view に書く */
 let laneOff = new Set();
 
 function renderLaneFilter() {
@@ -1966,8 +1978,8 @@ $("refresh").onclick = () => {
   // 自動更新では取り直さない。ページを送った分が毎回巻き戻ってしまうため
   if (activeTab === "closed") loadClosed(true);
 };
-$("mates").oninput = () => { renderPeople(); renderBoard(); };
-$("repos").oninput = renderRepoFilter;
+$("mates").oninput = () => { renderPeople(); renderBoard(); saveSettingsSoon(); };
+$("repos").oninput = () => { renderRepoFilter(); saveSettingsSoon(); };
 /* 設定の中の開閉。data-fold のボタンが aria-controls の中身を出し入れする。
    畳む側に入れるのは、初回に一度決めたら触らない初期設定と説明文。
    押した時点で盤面に効くものは畳まず外に出しておく */
@@ -1988,8 +2000,8 @@ function setTokenTrouble(bad) {
   if (bad) fold($("sec-token"), true);
 }
 
-$("interval").oninput = showInterval;
-/* 自動更新する曜日。保存するまでは画面側だけで持つ */
+$("interval").oninput = () => { showInterval(); saveSettingsSoon(); };
+/* 自動更新する曜日。押した時点で設定に書く */
 let daysOn = new Set();
 
 function renderDays() {
@@ -2006,6 +2018,7 @@ function renderDays() {
       else daysOn.add(d);
       renderDays();
       showDays();
+      saveSettingsNow();
     };
     box.append(b);
   }
@@ -2024,8 +2037,11 @@ function showDays() {
   el.textContent = [...daysOn].sort((a, b) => a - b).map((d) => DAY_NAMES[d]).join("・") + " に動く";
 }
 
+/* 打つ欄ではないのでデバウンスは掛けない。決めた時点で書く */
 $("quietfrom").oninput = showQuiet;
 $("quietto").oninput = showQuiet;
+$("quietfrom").onchange = () => saveSettingsNow();
+$("quietto").onchange = () => saveSettingsNow();
 
 /* 片方だけ入れた状態のまま気づかない、が起きやすいので言葉で返す */
 function showQuiet() {
@@ -2055,6 +2071,70 @@ $("memodelay").oninput = () => {
   saveView();
 };
 
+/* ---------- 設定の即時保存 ---------- */
+/* 打っている途中では書かない。最後の打鍵から待つ長さ */
+const SAVE_WAIT = 400;
+let saveTimer = null;
+
+/* 自動更新の欄が保存できる状態か。null なら通してよく、
+   文字列を返したらそれが止める理由。
+   0 と空は「自動更新なし」という意図した指定なので通す。
+   読めない式と 15秒未満は、そのまま入ると自動更新が黙って止まるので弾く */
+function intervalBlocker() {
+  const raw = $("interval").value.trim();
+  if (!raw || raw === "0") return null;
+  const sec = evalSeconds(raw);
+  if (sec === null) return "式として読めません";
+  if (sec > 0 && sec < 15) return "15秒未満です";
+  return null;
+}
+
+/* 画面の値を cfg に写して書く。トークンは対象外（cfg.token のまま持ち越す）。
+   読めない式のときは何も書かない —— 前の有効な値がそのまま残るので、
+   打っている途中の壊れた式で自動更新が死ぬことがない */
+function saveSettingsNow() {
+  const bad = intervalBlocker();
+  if (bad) return bad;
+  const before = cfg.interval;
+  cfg = {
+    ...cfg,
+    mates: $("mates").value.trim(),
+    repos: $("repos").value.trim(),
+    interval: $("interval").value.trim(),
+    quietFrom: $("quietfrom").value,
+    quietTo: $("quietto").value,
+    days: [...daysOn].sort((a, b) => a - b),
+  };
+  saveConfigJson();
+  // 間隔が変わったときだけ張り直す。毎回呼ぶと、打つ / 押すたびに
+  // 次の更新までのカウントが 0 に戻り続ける
+  if (String(cfg.interval) !== String(before)) schedule();
+  return null;
+}
+
+/* 打つ欄から呼ぶ。1文字ごとには書かない */
+function saveSettingsSoon() {
+  dropPendingSave();
+  saveTimer = setTimeout(() => { saveTimer = null; saveSettingsNow(); }, SAVE_WAIT);
+}
+
+function dropPendingSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+}
+
+/* 待っている分を今すぐ吐き出す。デバウンスだけだと、待っている間に
+   ページが裏に回って凍結された場合に書き込みが落ちる。
+   iOS Safari は裏のタブを実際に捨てるので、隠れた時点で確定させる */
+function flushSettings() {
+  if (!saveTimer) return;
+  dropPendingSave();
+  saveSettingsNow();
+}
+
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushSettings(); });
+window.addEventListener("pagehide", flushSettings);
+
 /* 式のままだと何秒か分からないので、結果をその場で添える */
 function showInterval() {
   const el = $("intervalout");
@@ -2069,6 +2149,11 @@ function showInterval() {
 }
 
 $("save").onclick = async () => {
+  // 読めない式のまま他の欄だけ保存すると、何が入ったのか分からなくなる。
+  // ここで止めて、直す場所に手を置く
+  const bad = intervalBlocker();
+  if (bad) { showInterval(); $("interval").focus(); return; }
+  dropPendingSave();   // この後で全部書き直すので、待っている分は捨てる
   // 一覧から消えた人・リポジトリのトグル状態は持ち越さない
   const live = new Set(peopleList().map((p) => p.key));
   peopleOff = new Set([...peopleOff].filter((key) => live.has(key)));
