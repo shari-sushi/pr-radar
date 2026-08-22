@@ -186,6 +186,27 @@
   }
   /* ✕ は ☰ と同じ寸法。グリフが小さいと箱まで小さく見えるので少し大きめ */
   .drawer-head button { width: 30px; height: var(--btn-h); padding: 0; font-size: 14px; }
+  /* 設定を2つのかたまりに分ける。上は普段触るもの（触った時点で効く）、
+     下は初回に決めるもの（「保存して更新」が要る）。
+     かたまりの見出しは 2px の ink の罫線にして、中の .sec
+     （1px の hairline が文字の右から伸びる）と段が付くようにした */
+  .group { display: grid; gap: 20px; }
+  .group[hidden] { display: none; }
+  .group-head { display: grid; gap: 6px; }
+  .group-head h3 {
+    margin: 0; font-family: var(--mono); font-weight: 700;
+    font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink);
+    border-bottom: 2px solid var(--ink); padding-bottom: 6px;
+  }
+  .group-head p { margin: 0; font-size: 11.5px; color: var(--faint); line-height: 1.45; }
+  /* 基本設定が埋まるまで、使用設定があった場所に出す案内。
+     黙って消えていると、トークンを消したときに項目が消えた理由が分からない */
+  .group-locked {
+    margin: 0; font-size: 11.5px; color: var(--faint); line-height: 1.45;
+    border: 1px dashed var(--line); padding: 10px 12px;
+  }
+  .group-locked[hidden] { display: none; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   /* セクション見出し。押すと初期設定と説明文が下に開く。
      見た目は文字のままにしたい（.wordmark button と同じ手で素の button を打ち消す）。
@@ -609,88 +630,115 @@
       <h2>設定</h2>
       <button id="close" aria-label="閉じる">✕</button>
     </div>
-    <div class="field">
-      <button class="sec" id="sec-token" type="button" data-fold aria-expanded="false" aria-controls="f-token">アクセストークン<span class="caret"></span></button>
-      <div class="fold" id="f-token" hidden>
-        <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false" aria-label="アクセストークン">
-        <button class="hint-btn" id="tokenhelp" type="button" data-fold aria-expanded="false" aria-controls="tokenhelpbox">トークンの取り方 ?</button>
-        <div class="helpbox" id="tokenhelpbox" hidden>
-          <ol>
-            <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> を開く（Fine-grained token）</li>
-            <li><b>Resource owner</b> — <code>example-org</code></li>
-            <li><b>Expiration</b> — 短めに。90日など</li>
-            <li><b>Repository access</b> — Only select repositories → 対象の3つだけ</li>
-            <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ</li>
-            <li><b>Generate token</b> → 出てきた値をこの欄に貼る</li>
-          </ol>
-          <p><code>Metadata: Read-only</code> は自動で付く（外せない）。<code>Contents</code> は付けないこと —— 付けるとリポジトリを丸ごと落とせるトークンになる。</p>
-          <p>org の設定によっては、発行後にオーナーの承認待ちになる。SAML SSO が必須なら Configure SSO で認可する。</p>
-          <p>classic token（<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>）は <code>repo</code> スコープに書き込み権限まで含むので使わない。</p>
+    <p class="group-locked" id="usagelocked">トークンとリポジトリを入れると、ここに使用設定が出ます。</p>
+
+    <section class="group" id="g-usage" hidden>
+      <div class="group-head">
+        <h3>使用設定</h3>
+        <p>ここは触った時点で保存されます。</p>
+      </div>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-people">追う人<span class="caret"></span></button>
+        <div class="fold" id="f-people" hidden>
+          <span class="hint">チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。</span>
         </div>
-        <span class="hint warn" id="cryptonote" hidden></span>
+        <div class="people" id="people"></div>
       </div>
-    </div>
-    <div class="field">
-      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-mates">Author<span class="caret"></span></button>
-      <div class="fold" id="f-mates" hidden>
-        <textarea id="mates" rows="2" placeholder="octocat" spellcheck="false" aria-label="Author"></textarea>
-        <span class="hint">自分以外で追う人の GitHub ID。複数はカンマか改行で区切る。チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。ここに載せていない人の PR は「ほかの人のPR」に回る。切り替えた時点で盤面に反映される（次に開いたときも残すには保存）。</span>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repofilter">出すリポジトリ<span class="caret"></span></button>
+        <div class="fold" id="f-repofilter" hidden>
+          <span class="hint">盤面の上の帯にあるものと同じ絞り込み。押した時点で盤面に反映される。</span>
+        </div>
+        <div class="repo-toggles" id="repofilter"></div>
       </div>
-      <div class="people" id="people"></div>
-    </div>
-    <div class="field">
-      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repos">リポジトリ<span class="caret"></span></button>
-      <div class="fold" id="f-repos" hidden>
-        <textarea id="repos" rows="3" spellcheck="false" aria-label="リポジトリ"></textarea>
-        <span class="hint">owner/repo を1行ずつ。下のトグルは盤面の上の帯にあるものと同じ絞り込みで、押した時点で盤面に反映される（次に開いたときも残すには保存）。</span>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-interval">自動更新<span class="caret"></span></button>
+        <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="自動更新">
+        <div class="fold" id="f-interval" hidden>
+          <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+        </div>
+        <span class="hint" id="intervalout"></span>
       </div>
-      <div class="repo-toggles" id="repofilter"></div>
-    </div>
-    <div class="field">
-      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-interval">自動更新<span class="caret"></span></button>
-      <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="自動更新">
-      <div class="fold" id="f-interval" hidden>
-        <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-quiet">自動更新を止める時間帯<span class="caret"></span></button>
+        <div class="times">
+          <input id="quietfrom" type="time" aria-label="自動更新を止める開始時刻">
+          <span class="to">〜</span>
+          <input id="quietto" type="time" aria-label="自動更新を止める終了時刻">
+        </div>
+        <div class="fold" id="f-quiet" hidden>
+          <span class="hint">この時間帯は自動更新しない。更新ボタンと <code>r</code> はいつでも効く。<code>19:00 〜 09:00</code> のように日をまたぐ指定もできる。空にすると止めない。</span>
+        </div>
+        <span class="hint" id="quietout"></span>
       </div>
-      <span class="hint" id="intervalout"></span>
-    </div>
-    <div class="field">
-      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-quiet">自動更新を止める時間帯<span class="caret"></span></button>
-      <div class="times">
-        <input id="quietfrom" type="time" aria-label="自動更新を止める開始時刻">
-        <span class="to">〜</span>
-        <input id="quietto" type="time" aria-label="自動更新を止める終了時刻">
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-days">自動更新する曜日<span class="caret"></span></button>
+        <div class="repo-toggles" id="dayfilter"></div>
+        <div class="fold" id="f-days" hidden>
+          <span class="hint">押した時点で保存され、自動更新に反映される。</span>
+        </div>
+        <span class="hint" id="dayout"></span>
       </div>
-      <div class="fold" id="f-quiet" hidden>
-        <span class="hint">この時間帯は自動更新しない。更新ボタンと <code>r</code> はいつでも効く。<code>19:00 〜 09:00</code> のように日をまたぐ指定もできる。空にすると止めない。</span>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-memodelay">メモの吹き出し<span class="caret"></span></button>
+        <div class="slider">
+          <input id="memodelay" type="range" min="0" step="1" aria-label="メモの吹き出しが出るまで">
+          <span class="val" id="memodelayout"></span>
+        </div>
+        <div class="fold" id="f-memodelay" hidden>
+          <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。</span>
+        </div>
       </div>
-      <span class="hint" id="quietout"></span>
-    </div>
-    <div class="field">
-      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-days">自動更新する曜日<span class="caret"></span></button>
-      <div class="repo-toggles" id="dayfilter"></div>
-      <div class="fold" id="f-days" hidden>
-        <span class="hint">押した時点で保存され、自動更新に反映される。</span>
+    </section>
+
+    <section class="group" id="g-basic">
+      <div class="group-head">
+        <h3>基本設定</h3>
+        <p>初回に決めたら、あとは触りません。変えたら下の「保存して更新」を押します。</p>
       </div>
-      <span class="hint" id="dayout"></span>
-    </div>
-    <div class="field">
-      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-memodelay">メモの吹き出し<span class="caret"></span></button>
-      <div class="slider">
-        <input id="memodelay" type="range" min="0" step="1" aria-label="メモの吹き出しが出るまで">
-        <span class="val" id="memodelayout"></span>
+      <div class="field">
+        <button class="sec" id="sec-token" type="button" data-fold aria-expanded="false" aria-controls="f-token">アクセストークン<span class="caret"></span></button>
+        <div class="fold" id="f-token" hidden>
+          <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false" aria-label="アクセストークン">
+          <button class="hint-btn" id="tokenhelp" type="button" data-fold aria-expanded="false" aria-controls="tokenhelpbox">トークンの取り方 ?</button>
+          <div class="helpbox" id="tokenhelpbox" hidden>
+            <ol>
+              <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> を開く（Fine-grained token）</li>
+              <li><b>Resource owner</b> — <code>example-org</code></li>
+              <li><b>Expiration</b> — 短めに。90日など</li>
+              <li><b>Repository access</b> — Only select repositories → 対象の3つだけ</li>
+              <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ</li>
+              <li><b>Generate token</b> → 出てきた値をこの欄に貼る</li>
+            </ol>
+            <p><code>Metadata: Read-only</code> は自動で付く（外せない）。<code>Contents</code> は付けないこと —— 付けるとリポジトリを丸ごと落とせるトークンになる。</p>
+            <p>org の設定によっては、発行後にオーナーの承認待ちになる。SAML SSO が必須なら Configure SSO で認可する。</p>
+            <p>classic token（<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>）は <code>repo</code> スコープに書き込み権限まで含むので使わない。</p>
+          </div>
+          <span class="hint warn" id="cryptonote" hidden></span>
+        </div>
       </div>
-      <div class="fold" id="f-memodelay" hidden>
-        <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。</span>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-mates">Author<span class="caret"></span></button>
+        <div class="fold" id="f-mates" hidden>
+          <textarea id="mates" rows="2" placeholder="octocat" spellcheck="false" aria-label="Author"></textarea>
+          <span class="hint">自分以外で追う人の GitHub ID。複数はカンマか改行で区切る。ここに載せていない人の PR は「ほかの人のPR」に回る。</span>
+        </div>
       </div>
-    </div>
-    <div class="actions">
-      <button class="save" id="save">保存して更新</button>
-      <button id="test">接続テスト</button>
-      <button id="forget">トークンを消す</button>
-      <span class="note">設定はこのブラウザに保存されます（トークンは <code>key.js</code> の鍵で暗号化）。読み取り専用のトークンを使ってください。</span>
-    </div>
-    <div class="test-out" id="testout" hidden></div>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repos">リポジトリ<span class="caret"></span></button>
+        <div class="fold" id="f-repos" hidden>
+          <textarea id="repos" rows="3" spellcheck="false" aria-label="リポジトリ"></textarea>
+          <span class="hint">owner/repo を1行ずつ。</span>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="save" id="save">保存して更新</button>
+        <button id="test">接続テスト</button>
+        <button id="forget">トークンを消す</button>
+        <span class="note">設定はこのブラウザに保存されます（トークンは <code>key.js</code> の鍵で暗号化）。読み取り専用のトークンを使ってください。</span>
+      </div>
+      <div class="test-out" id="testout" hidden></div>
+    </section>
   </aside>
 
   <div class="board" id="board">
@@ -720,8 +768,8 @@
 <script>
 const DEFAULTS = {
   token: "",
-  mates: "octocat",
-  repos: "example-org/repo-a\nexample-org/repo-b\nexample-org/repo-c",
+  mates: "",
+  repos: "shari-sushi/V-Kara-Lists\nshari-sushi/orlder-car-line\nshari-sushi/sandbox",
   interval: 60,
   quietFrom: "",  // 自動更新を止める時間帯。空なら止めない
   quietTo: "",
@@ -1809,6 +1857,22 @@ function renderLaneFilter() {
   }
 }
 
+/* 基本設定が埋まるまで使用設定は出さない。判定はトークンとリポジトリの2つだけ。
+   author は空でも成立する（自分の PR だけが出る）ので見ない。
+
+   トークンは「localStorage に保存できたか」ではなく、メモリの cfg.token で見る。
+   key.js が無いと保存はできないが、その画面を閉じるまでは普通に使えるので、
+   保存の成否で見ると使用設定が永久に隠れる。
+   cfg.me も混ぜない —— /user が1往復するまで空なので、
+   トークンを入れた直後に使用設定が一瞬消えることになる。
+
+   リポジトリの方は逆に、打った値がそのまま盤面に効く欄なので画面側を見る */
+function paintGroups() {
+  const ready = !!String(cfg.token || "").trim() && !!$("repos").value.trim();
+  $("g-usage").hidden = !ready;
+  $("usagelocked").hidden = ready;
+}
+
 function fillForm() {
   $("token").value = cfg.token;
   $("mates").value = cfg.mates;
@@ -1827,6 +1891,7 @@ function fillForm() {
   renderPeople();
   renderRepoFilter();
   renderLaneFilter();
+  paintGroups();
   // 開閉は覚えない。開くたび全部閉じた状態から始まる（HTML の hidden 属性）。
   // 例外はトークンだけ —— まだ入っていないなら開いた状態で見せる
   fold($("sec-token"), !cfg.token);
@@ -1979,7 +2044,7 @@ $("refresh").onclick = () => {
   if (activeTab === "closed") loadClosed(true);
 };
 $("mates").oninput = () => { renderPeople(); renderBoard(); saveSettingsSoon(); };
-$("repos").oninput = () => { renderRepoFilter(); saveSettingsSoon(); };
+$("repos").oninput = () => { renderRepoFilter(); paintGroups(); saveSettingsSoon(); };
 /* 設定の中の開閉。data-fold のボタンが aria-controls の中身を出し入れする。
    畳む側に入れるのは、初回に一度決めたら触らない初期設定と説明文。
    押した時点で盤面に効くものは畳まず外に出しておく */
@@ -2172,6 +2237,7 @@ $("save").onclick = async () => {
   };
   tokenNote = "";
   await saveConfig();
+  paintGroups();
   $("testout").hidden = true;
   setSettings(false);
   schedule();
@@ -2182,6 +2248,7 @@ $("forget").onclick = async () => {
   $("token").value = "";
   tokenNote = "";
   await saveConfig();
+  paintGroups();
   refresh();
 };
 
