@@ -745,14 +745,14 @@
         <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-mates">Author<span class="caret"></span></button>
         <div class="fold" id="f-mates" hidden>
           <textarea id="mates" rows="2" placeholder="octocat" spellcheck="false" aria-label="Author"></textarea>
-          <span class="hint">自分以外で追う人の GitHub ID。複数はカンマか改行で区切る。ここに載せていない人の PR は「ほかの人のPR」に回る。</span>
+          <span class="hint">自分以外で追う人の GitHub ID。複数はカンマか改行で区切る。ここに載せていない人の PR は「ほかの人のPR」に回る。打った時点で盤面に反映されるが、残すには「保存して更新」を押す。</span>
         </div>
       </div>
       <div class="field">
         <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repos">リポジトリ<span class="caret"></span></button>
         <div class="fold" id="f-repos" hidden>
           <textarea id="repos" rows="3" spellcheck="false" aria-label="リポジトリ"></textarea>
-          <span class="hint">owner/repo を1行ずつ。</span>
+          <span class="hint">owner/repo を1行ずつ。打った時点で盤面に反映されるが、残すには「保存して更新」を押す。</span>
         </div>
       </div>
       <div class="actions">
@@ -2067,8 +2067,8 @@ $("refresh").onclick = () => {
   // 自動更新では取り直さない。ページを送った分が毎回巻き戻ってしまうため
   if (activeTab === "closed") loadClosed(true);
 };
-$("mates").oninput = () => { renderPeople(); renderBoard(); saveSettingsSoon(); };
-$("repos").oninput = () => { renderRepoFilter(); paintGroups(); saveSettingsSoon(); };
+$("mates").oninput = () => { renderPeople(); renderBoard(); };
+$("repos").oninput = () => { renderRepoFilter(); paintGroups(); };
 /* 設定の中の開閉。data-fold のボタンが aria-controls の中身を出し入れする。
    畳む側に入れるのは、初回に一度決めたら触らない初期設定と説明文。
    押した時点で盤面に効くものは畳まず外に出しておく */
@@ -2179,7 +2179,9 @@ function intervalBlocker() {
   return null;
 }
 
-/* 画面の値を cfg に写して書く。トークンは対象外（cfg.token のまま持ち越す）。
+/* 使用設定の値を cfg に写して書く。基本設定（token / mates / repos）は対象外で、
+   ここでは cfg のものをそのまま持ち越す。混ぜると、間隔や曜日を触っただけで
+   テキストエリアの未保存の内容まで一緒に保存されてしまう。
    読めない式のときは何も書かない —— 前の有効な値がそのまま残るので、
    打っている途中の壊れた式で自動更新が死ぬことがない */
 function saveSettingsNow() {
@@ -2188,8 +2190,6 @@ function saveSettingsNow() {
   const before = cfg.interval;
   cfg = {
     ...cfg,
-    mates: $("mates").value.trim(),
-    repos: $("repos").value.trim(),
     interval: $("interval").value.trim(),
     quietFrom: $("quietfrom").value,
     quietTo: $("quietto").value,
@@ -2202,7 +2202,8 @@ function saveSettingsNow() {
   return null;
 }
 
-/* 打つ欄から呼ぶ。1文字ごとには書かない */
+/* 打つ欄から呼ぶ。1文字ごとには書かない。
+   使用設定で打つ欄は自動更新の間隔だけ（基本設定は保存ボタンで書く） */
 function saveSettingsSoon() {
   dropPendingSave();
   saveTimer = setTimeout(() => { saveTimer = null; saveSettingsNow(); }, SAVE_WAIT);
