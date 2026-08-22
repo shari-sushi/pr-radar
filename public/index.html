@@ -24,7 +24,7 @@
        px で置くのは、使う側の font-size を変えても高さがずれないようにするため */
     --btn-h: 29px;
     /* メモの吹き出しが出るまで。設定から書き換わる */
-    --memo-delay: .9s;
+    --memo-delay: .1s;
     --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
     --mono: ui-monospace, SFMono-Regular, Menlo, "Roboto Mono", monospace;
   }
@@ -673,7 +673,7 @@
       <div class="field">
         <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-interval">自動更新<span class="caret"></span></button>
         <div class="interval">
-          <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="自動更新" aria-describedby="intervalval intervalout">
+          <input id="interval" type="text" inputmode="text" placeholder="60*60" autocomplete="off" spellcheck="false" aria-label="自動更新" aria-describedby="intervalval intervalout">
           <span class="hint" id="intervalval"></span>
         </div>
         <div class="fold" id="f-interval" hidden>
@@ -793,10 +793,11 @@ const DEFAULTS = {
   token: "",
   mates: "",
   repos: "shari-sushi/V-Kara-Lists\nshari-sushi/orlder-car-line\nshari-sushi/sandbox",
-  interval: 60,
-  quietFrom: "",  // 自動更新を止める時間帯。空なら止めない
-  quietTo: "",
-  days: [0, 1, 2, 3, 4, 5, 6],   // 自動更新する曜日（0=日）。既定は毎日
+  // 保存されるときは文字列（$("interval").value）なので、既定も文字列で置く
+  interval: "60*60",
+  quietFrom: "21:00",  // 自動更新を止める時間帯。空なら止めない
+  quietTo: "09:00",
+  days: [1, 2, 3, 4, 5],   // 自動更新する曜日（0=日）。既定は平日だけ
   me: "",     // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
 };
 const KEY = "pr-radar:config";
@@ -1278,7 +1279,12 @@ let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
 let showOut = true;      // 伏せた PR を盤面に残すか。ヘッダーの目のボタンで切り替える
 let showWaiting = true;  // 「待ち」の印が付いた PR を盤面に残すか
-let memoDelay = 0.9;   // メモの吹き出しが出るまでの秒数
+/* メモの吹き出しが出るまでの既定。DELAY_STEPS に実在する値であること
+   （目盛りに無い値を置くと、つまみの位置と横の数字が食い違う）。
+   保存が無いとき・保存が読めないときの落とし所が3か所あるので、
+   数字を散らさずここ1つにする */
+const DEFAULT_DELAY = 0.1;
+let memoDelay = DEFAULT_DELAY;   // メモの吹き出しが出るまでの秒数
 
 /* つまみの目盛り。1秒までは 0.1 刻み、そこから上は 0.5 刻み。
    刻みが一様でないので range の step では表せない。つまみにはこの配列の
@@ -1292,7 +1298,7 @@ const DELAY_STEPS = [
 /* 数でない値や範囲外は既定に戻す。null が 0（＝待たずに出る）へ化けない
    よう、型から見る */
 function validDelay(value) {
-  if (typeof value !== "number" || !isFinite(value) || value < 0 || value > 5) return 0.9;
+  if (typeof value !== "number" || !isFinite(value) || value < 0 || value > 5) return DEFAULT_DELAY;
   return Math.round(value * 10) / 10;
 }
 
@@ -1931,7 +1937,7 @@ const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
 
 /* 設定に入っている曜日だけを拾う。壊れていたら「毎日」に倒す */
 function pickedDays() {
-  if (!Array.isArray(cfg.days)) return [0, 1, 2, 3, 4, 5, 6];
+  if (!Array.isArray(cfg.days)) return DEFAULTS.days;
   return cfg.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 }
 
@@ -2146,7 +2152,7 @@ function showQuiet() {
 /* 保存ボタンは通さない。動かした時点で効いて、そのまま覚える */
 $("memodelay").oninput = () => {
   const picked = DELAY_STEPS[Number($("memodelay").value)];
-  memoDelay = typeof picked === "number" ? picked : 0.9;
+  memoDelay = typeof picked === "number" ? picked : DEFAULT_DELAY;
   applyMemoDelay();
   saveView();
 };
