@@ -1,6 +1,6 @@
 # pr-radar
 
-example-org の複数リポジトリにまたがる open PR / draft PR を、1画面で見るための個人用ダッシュボード。
+複数リポジトリにまたがる open PR / draft PR を、1画面で見るための個人用ダッシュボード。
 
 ビルドなし・依存なしの HTML 1枚。GitHub API を直接叩く。
 
