@@ -14,6 +14,12 @@
     --draft:   #4C5F8F;
     --review:  #C8102E;
     --other:   #8B9AA4;
+    /* 週末の下地の元になる色。レーンの色とは用途が違うので別に持つ。
+       12% まで薄めても色味が残る彩度のものを置くこと —— 最初は --draft
+       (#4C5F8F) を使ったが、元から彩度が低いので薄めると青みが飛んで
+       グレーになった。日曜側は --review をそのまま指して見た目を変えない */
+    --sun:     var(--review);
+    --sat:     #0D82D5;
     /* ボタン1個分の高さ（11.5px × 1.5 + 上下 padding 5px + 枠 1px）。
        px で置くのは、使う側の font-size を変えても高さがずれないようにするため */
     --btn-h: 29px;
@@ -271,12 +277,12 @@
      .repo は背景を「押されているか」の軸に使っているが、on/off は取り消し線と
      枠・文字色でも表されている。曜日は7つ全部が押されているのが既定なので、
      背景は週末の側に譲った方が情報が増える。
-     日は赤系・土は青系（日本のカレンダーの慣習）。無彩色の --panel と
-     見分けが付くよう、色味を薄く残す。
+     日は赤系・土は水色系（日本のカレンダーの慣習）。無彩色の --panel と
+     見分けが付くよう、色味を薄く残す。混ぜる割合は両方 12% で揃えている。
      #dayfilter の中だけに効かせる —— .repo は #repofilter でも使っている。
      id が入っているので .repo[aria-pressed="true"] の background より強い */
-  #dayfilter [data-day="0"] { background: color-mix(in srgb, var(--review) 12%, var(--panel)); }
-  #dayfilter [data-day="6"] { background: color-mix(in srgb, var(--draft) 12%, var(--panel)); }
+  #dayfilter [data-day="0"] { background: color-mix(in srgb, var(--sun) 12%, var(--panel)); }
+  #dayfilter [data-day="6"] { background: color-mix(in srgb, var(--sat) 12%, var(--panel)); }
   .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   /* 入力欄と計算結果を1行に。入る値は 60 / 60*30 / 60*60*24 くらいなので、
      桁数に見合う幅で止めて、余りは結果の側に渡す */
