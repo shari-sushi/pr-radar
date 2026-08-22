@@ -459,13 +459,28 @@
 
   .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
 
+  /* 状態の軸だけをタブにする。誰のPRかはレーンが持っているので混ぜない */
+  .tabs {
+    display: flex; gap: 2px; align-items: flex-end;
+    margin: -8px 0 14px; border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .1em;
+    text-transform: uppercase; padding: 6px 14px;
+    border: 0; border-radius: 0; background: none; color: var(--faint);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); background: none; border-color: transparent; border-bottom-color: var(--line); }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+
   /* 絞り込みは全部この1行に置く。ヘッダーには識別と全体操作だけ残す */
   .filters {
     display: flex; align-items: center; gap: 18px;
-    margin: -12px 0 18px; padding-bottom: 4px;
+    margin: 0 0 18px; padding-bottom: 4px;
     overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
   }
   .fgroup { display: flex; align-items: center; gap: 7px; flex: none; }
+  .fgroup[hidden] { display: none; }
   .flabel {
     font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
     text-transform: uppercase; color: var(--faint);
@@ -530,10 +545,15 @@
     </button>
   </div>
 
+  <div class="tabs" role="tablist">
+    <button class="tab" id="tab-open" type="button" role="tab" aria-selected="true">open</button>
+    <button class="tab" id="tab-closed" type="button" role="tab" aria-selected="false">closed</button>
+  </div>
+
   <div class="filters">
     <span class="fgroup"><span class="flabel">repo</span><span class="scope" id="scope"></span></span>
     <span class="fgroup"><span class="flabel">who</span><span class="people-bar" id="peoplebar"></span></span>
-    <span class="fgroup"><span class="flabel">lane</span><span class="scope" id="lanefilter"></span></span>
+    <span class="fgroup" id="lanegroup"><span class="flabel">lane</span><span class="scope" id="lanefilter"></span></span>
     <span class="fgroup">
       <button id="waitfilter" type="button" aria-pressed="false">待ち</button>
       <button id="blind" type="button" aria-pressed="false"></button>
@@ -623,6 +643,7 @@
     <div class="col">
       <section class="lane" id="lane-ready" style="--c:var(--ready)"></section>
       <section class="lane" id="lane-draft" style="--c:var(--draft)"></section>
+      <section class="lane" id="lane-closed" style="--c:var(--other)"></section>
     </div>
     <div class="col">
       <section class="lane" id="lane-review" style="--c:var(--review)"></section>
@@ -688,8 +709,13 @@ const LANES = [
     legend: true, copy: true },
   { id: "draft",  rail: "下書",   title: "自分たちのPR — Draft",       sub: "作業中。放置してないか確認用" },
   { id: "review", rail: "依頼",   title: "自分にレビュー依頼が来ている", sub: "Reviewer に指名されているもの" },
-  { id: "other",  rail: "他",     title: "ほかの人のPR",                sub: "3リポジトリで今開いている残り全部" }
+  { id: "other",  rail: "他",     title: "ほかの人のPR",                sub: "3リポジトリで今開いている残り全部" },
+  { id: "closed", rail: "閉",     title: "閉じたPR",                    sub: "マージ済み・未マージを新しい順に", tab: "closed" }
 ];
+/* tab を書いていないものは open。既定のタブに寄せておく */
+for (const l of LANES) if (!l.tab) l.tab = "open";
+
+let activeTab = "open";
 
 let cfg = { ...DEFAULTS };
 let timer = null;
@@ -1121,6 +1147,7 @@ function loadView() {
   showOut = view.showOut !== false;
   showWaiting = view.showWaiting !== false;
   laneOff = new Set(strings(view.laneOff));
+  activeTab = view.tab === "closed" ? "closed" : "open";   // 知らない値は open に倒す
   memoDelay = snapDelay(view.memoDelay);
   // 以前は設定側（cfg.off / cfg.hidden）に置いていた。残っていれば一度だけ
   // 引き継ぎ、以後は view だけを見る
@@ -1134,7 +1161,7 @@ function loadView() {
 function saveView() {
   writeJson(VIEW_KEY, {
     showOut, showWaiting, memoDelay,
-    off: [...peopleOff], hidden: [...hiddenRepos], laneOff: [...laneOff]
+    off: [...peopleOff], hidden: [...hiddenRepos], laneOff: [...laneOff], tab: activeTab
   });
 }
 const hiddenRepos = new Set();
@@ -1293,7 +1320,7 @@ async function refresh() {
 /* 外したレーンは要素ごと消す。列が空になったらその列も消し、
    残りが1列だけになったら盤面を1列に切り替える */
 function syncLanes() {
-  for (const l of LANES) $("lane-" + l.id).hidden = laneOff.has(l.id);
+  for (const l of LANES) $("lane-" + l.id).hidden = l.tab !== activeTab || laneOff.has(l.id);
   const cols = [...document.querySelectorAll("#board > .col")];
   for (const col of cols) col.hidden = [...col.children].every((el) => el.hidden);
   $("board").classList.toggle("one", cols.filter((c) => !c.hidden).length === 1);
@@ -1631,7 +1658,10 @@ let laneOff = new Set();
 function renderLaneFilter() {
   const box = $("lanefilter");
   box.textContent = "";
-  for (const lane of LANES) {
+  const lanes = LANES.filter((l) => l.tab === activeTab);
+  // 1本しかないタブでは、畳むトグルを出す意味がない
+  $("lanegroup").hidden = lanes.length < 2;
+  for (const lane of lanes) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "lane-tag";
@@ -1769,6 +1799,24 @@ function paintBlind() {
   b.title = showOut ? "伏せたPRも出している — 押すと隠す" : "伏せたPRを隠している — 押すと出す";
   b.setAttribute("aria-label", b.title);
 }
+
+function paintTabs() {
+  for (const id of ["open", "closed"]) {
+    $("tab-" + id).setAttribute("aria-selected", String(activeTab === id));
+  }
+}
+
+function setTab(tab) {
+  if (activeTab === tab) return;
+  activeTab = tab;
+  saveView();
+  paintTabs();
+  renderLaneFilter();   // タブごとに畳めるレーンが変わる
+  syncLanes();
+}
+
+$("tab-open").onclick = () => setTab("open");
+$("tab-closed").onclick = () => setTab("closed");
 
 /* ヘッダーの「待ち」。印の付いた PR を盤面に残すかどうかだけを切り替える */
 function paintWaitFilter() {
@@ -2002,6 +2050,7 @@ document.addEventListener("keydown", (e) => {
   loadView();     // 旧い cfg.off / cfg.hidden を引き継ぐことがあるので loadConfig の後
   paintBlind();
   paintWaitFilter();
+  paintTabs();
   fillForm();
   // 前回の内容を先に出す。取り直しは裏で走り、終わったら差し替わる
   if (loadCache()) {
