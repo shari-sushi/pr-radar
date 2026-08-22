@@ -546,6 +546,12 @@
   }
   .fgroup { display: flex; align-items: center; gap: 7px; flex: none; }
   .fgroup[hidden] { display: none; }
+  /* 「待ち」と目のボタンの高さを揃える。目の方は中がアイコンだけで
+     テキストの行高を持たないので低くなる。--btn-h を当てると
+     「待ち」（等幅の行高 ＋ padding ＋ 枠）と 1〜2px ずれるため、
+     数値ではなく兄弟の高い方に伸ばす。
+     .fgroup 自体には掛けない —— repo / who / lane のチップまで伸びる */
+  #waitgroup { align-items: stretch; }
   .flabel {
     font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
     text-transform: uppercase; color: var(--faint);
@@ -619,7 +625,7 @@
       <span class="fgroup"><span class="flabel">repo</span><span class="scope" id="scope"></span></span>
       <span class="fgroup"><span class="flabel">who</span><span class="people-bar" id="peoplebar"></span></span>
       <span class="fgroup" id="lanegroup"><span class="flabel">lane</span><span class="scope" id="lanefilter"></span></span>
-      <span class="fgroup">
+      <span class="fgroup" id="waitgroup">
         <button id="waitfilter" type="button" aria-pressed="false">待ち</button>
         <button id="blind" type="button" aria-pressed="false"></button>
       </span>
