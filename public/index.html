@@ -389,8 +389,11 @@
   .pr-row { position: relative; border-bottom: 1px solid #EDF0F1; }
   .pr-row:last-child { border-bottom: 0; }
   .pr-row:hover { background: #F7F9F9; }
-  /* 伏せた PR。盤面に残しているときは、目立たないように落とす。
+  /* 自分の手を離れているか（待ち）、見なくていいか（伏せた）を、
+     同じ opacity の2段階で表す。1 → .7 → .42 で意味が一本の軸に並ぶ。
      opacity は .pr にだけ掛ける。ボタンまで薄くすると戻しにくい */
+  .pr-row.waiting .pr { opacity: .7; }
+  /* 両方付いていたら伏せた側を採る。同じ詳細度なので、後ろに置いて勝たせる */
   .pr-row.out .pr { opacity: .42; }
   .pr {
     display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
@@ -1554,6 +1557,8 @@ function renderLane(lane, prs, emptyMsg) {
     const pr = prs[Number(box.dataset.i)];
     box.onchange = () => {
       setWaiting(pr, box.checked);
+      // 描き直さず、その行の見た目だけ変える。描き直すと押した瞬間にフォーカスが飛ぶ
+      box.closest(".pr-row").classList.toggle("waiting", box.checked);
       // 隠している最中なら、印を付けた時点でそのカードは盤面から落ちる
       if (!showWaiting) renderBoard();
     };
@@ -1710,7 +1715,7 @@ function prRow(pr, i) {
   const inScope = labelOf(pr) === LABELS.IN;
   const memo = memoOf(pr);
 
-  return '<div class="pr-row' + (inScope ? "" : " out") + '">' +
+  return '<div class="pr-row' + (inScope ? "" : " out") + (isWaiting(pr) ? " waiting" : "") + '">' +
     prCard(pr) +
     '<div class="pr-actions">' +
       '<button class="memo-tag' + (memo ? " has" : "") + '" type="button" data-i="' + i + '"' +
