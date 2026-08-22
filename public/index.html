@@ -830,13 +830,13 @@ const REVIEW_TEMPLATE = [
 const LANES = [
   // 待ちのレーンだけ、説明の代わりにカードのフッターの読み方を出す。
   // 書式はどのレーンでも同じなので、最初に目に入る1か所にだけ置く
-  { id: "ready",  rail: "待ち",   title: "自分たちのPR — レビュー待ち",
+  { id: "ready",  rail: "待ち",   title: "Ready for Review",
     sub: "author | created_at - last-updated | comment-count, review-count, inline-comment-count",
     legend: true, copy: true },
-  { id: "draft",  rail: "下書",   title: "自分たちのPR — Draft",       sub: "作業中。放置してないか確認用" },
-  { id: "review", rail: "依頼",   title: "自分にレビュー依頼が来ている", sub: "Reviewer に指名されているもの" },
-  { id: "other",  rail: "他",     title: "ほかの人のPR",                sub: "3リポジトリで今開いている残り全部" },
-  { id: "closed", rail: "閉",     title: "閉じたPR",                    sub: "マージ済み・未マージを新しい順に", tab: "closed", paged: true }
+  { id: "draft",  rail: "下書",   title: "Draft" },
+  { id: "review", rail: "依頼",   title: "Review Requested" },
+  { id: "other",  rail: "他",     title: "Others" },
+  { id: "closed", rail: "閉",     title: "Closed", tab: "closed", paged: true }
 ];
 /* tab を書いていないものは open。既定のタブに寄せておく */
 for (const l of LANES) if (!l.tab) l.tab = "open";
@@ -1532,7 +1532,7 @@ function renderLane(lane, prs, emptyMsg) {
     '<div class="rail"><span class="n">' + (prs ? n : "–") + '</span><span class="lbl">' + lane.rail + "</span></div>" +
     '<div class="lane-body">' +
       '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
-        '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" +
+        (lane.sub ? '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" : "") +
         (canCopy
           ? '<span class="acts">' +
               '<button class="copy" type="button" data-kind="list" aria-label="この一覧をコピー" title="この一覧をコピー">' + ICON_COPY + "</button>" +
