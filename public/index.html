@@ -40,7 +40,7 @@
   /* ---------- masthead ---------- */
   .top {
     display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
-    padding-bottom: 12px; margin-bottom: 20px;
+    padding-bottom: 12px; margin-bottom: 14px;
     border-bottom: 2px solid var(--ink);
   }
   .wordmark {
@@ -68,6 +68,23 @@
   .repo[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
   .repo[aria-pressed="false"] { text-decoration: line-through; text-decoration-color: var(--line); }
   .repo:hover { color: var(--ink); }
+  /* 状態の軸だけをタブにする。誰のPRかはレーンが持っているので混ぜない。
+     見出しの下罫線と選択中タブの下線は同じ 2px の ink なので、
+     下線を border ではなく文字装飾にして罫線と取り合わないようにする */
+  .top .tabs { display: flex; align-items: baseline; gap: 14px; flex: none; }
+  .tab {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em;
+    text-transform: uppercase;
+    border: 0; border-radius: 0; background: none; padding: 0;
+    color: var(--faint);
+  }
+  .tab:hover { color: var(--dim); background: none; border-color: transparent; }
+  .tab[aria-selected="true"] {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
   .top .spacer { flex: 1 1 auto; }
   .status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); letter-spacing: .03em; }
   .status b { color: var(--dim); font-weight: 500; }
@@ -169,28 +186,43 @@
   /* ✕ は ☰ と同じ寸法。グリフが小さいと箱まで小さく見えるので少し大きめ */
   .drawer-head button { width: 30px; height: var(--btn-h); padding: 0; font-size: 14px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
-  /* セクション見出し。直接の子だけ（.people の中のラベルは対象外） */
-  .field > label {
-    display: flex; align-items: center; gap: 10px;
+  /* セクション見出し。押すと初期設定と説明文が下に開く。
+     見た目は文字のままにしたい（.wordmark button と同じ手で素の button を打ち消す）。
+     文字から右の水平線まで、行ぜんぶが押せる */
+  .field > .sec {
+    display: flex; align-items: center; gap: 10px; width: 100%;
     font-family: var(--mono); font-size: 12px; font-weight: 700;
     letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
-    margin-bottom: 2px;
+    text-align: left; margin: 0 0 2px; padding: 0;
+    background: none; border: 0; border-radius: 0; cursor: pointer;
   }
-  .field > label::after {
+  .field > .sec::after {
     content: ""; flex: 1 1 auto; height: 1px; background: var(--line);
   }
-  /* 見出しの脇の「?」。開くと下に手順が出る */
-  .help {
-    flex: none; width: 16px; height: 16px; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    border-radius: 50%; border: 1px solid var(--line);
-    font-size: 10px; line-height: 1; letter-spacing: 0; color: var(--faint);
+  .field > .sec:hover { color: var(--ink); background: none; border: 0; }
+  /* 山形。閉じているあいだは右向き。SVG を8か所に貼らず CSS で描く */
+  .sec .caret {
+    flex: none; width: 5px; height: 5px; margin-left: -4px;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg); transition: transform .16s;
   }
-  .help:hover, .help[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
-  /* つながっていないときは、直し方がここにあると分かるようにする */
-  .help.bad, .help.bad:hover, .help.bad[aria-expanded="true"] {
-    color: var(--review); border-color: var(--review); background: #FDECEE;
+  .sec[aria-expanded="false"] .caret { transform: rotate(-45deg); }
+  /* つながっていないときは、直し方がここにあると分かるようにする。
+     「?」は畳む側に入っていて見えないので、赤はこの見出しに出す */
+  .field > .sec.bad { color: var(--review); }
+  .field > .sec.bad::after { background: var(--review); }
+  /* 見出しの中に畳むもの。display を持つので hidden 属性だけでは消えない */
+  .fold { display: grid; gap: 5px; }
+  .fold[hidden] { display: none; }
+  /* 手順を出すボタン。畳んだ中では丸ボタンが浮くので、文字のまま置く */
+  .hint-btn {
+    /* .fold は grid。横は中身の幅まで縮めたいので justify-self */
+    justify-self: start;
+    font-family: var(--sans); font-size: 11.5px; letter-spacing: 0;
+    text-transform: none; color: var(--faint);
+    background: none; border: 0; border-radius: 0; padding: 0; cursor: pointer;
   }
+  .hint-btn:hover, .hint-btn[aria-expanded="true"] { color: var(--ink); background: none; border: 0; }
   .helpbox {
     border: 1px solid var(--line); border-left: 3px solid var(--dim);
     background: #FBFCFC; padding: 10px 12px;
@@ -249,7 +281,10 @@
     padding: 0; border: 0; background: transparent; accent-color: var(--ready);
   }
   .field input:focus, .field textarea:focus { border-color: var(--dim); outline: none; background: #fff; }
-  .settings .actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .settings .actions {
+    grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    border-top: 1px solid var(--line); padding-top: 12px;
+  }
   .settings .actions .note { font-size: 11.5px; color: var(--faint); }
   .save { border-color: var(--ink) !important; color: var(--ink) !important; font-weight: 700; }
 
@@ -471,25 +506,16 @@
 
   .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
 
-  /* 状態の軸だけをタブにする。誰のPRかはレーンが持っているので混ぜない */
-  .tabs {
-    display: flex; gap: 2px; align-items: flex-end;
-    margin: -8px 0 14px; border-bottom: 1px solid var(--line);
+  /* 絞り込み専用の帯。タブは見出しの行にある */
+  .bar {
+    display: flex; align-items: flex-end;
+    margin: -10px 0 16px; border-bottom: 1px solid var(--line);
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
   }
-  .tab {
-    font-family: var(--mono); font-size: 12px; letter-spacing: .1em;
-    text-transform: uppercase; padding: 6px 14px;
-    border: 0; border-radius: 0; background: none; color: var(--faint);
-    border-bottom: 2px solid transparent; margin-bottom: -1px;
-  }
-  .tab:hover { color: var(--ink); background: none; border-color: transparent; border-bottom-color: var(--line); }
-  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
-
-  /* 絞り込みは全部この1行に置く。ヘッダーには識別と全体操作だけ残す */
+  /* 絞り込みはヘッダーから降ろしてここへ。ヘッダーには識別と全体操作だけ残す */
   .filters {
     display: flex; align-items: center; gap: 18px;
-    margin: 0 0 18px; padding-bottom: 4px;
-    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+    flex: none; padding-bottom: 7px;
   }
   .fgroup { display: flex; align-items: center; gap: 7px; flex: none; }
   .fgroup[hidden] { display: none; }
@@ -547,6 +573,10 @@
 <div class="wrap">
   <div class="top">
     <h1 class="wordmark"><button id="showall" type="button" title="すべてのリポジトリを表示">PRレーダー</button></h1>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-open" type="button" role="tab" aria-selected="true">open</button>
+      <button class="tab" id="tab-closed" type="button" role="tab" aria-selected="false">closed</button>
+    </div>
     <span class="spacer"></span>
     <span class="status" id="status">読み込み待ち</span>
     <button id="refresh" aria-label="更新" title="更新">
@@ -557,19 +587,16 @@
     </button>
   </div>
 
-  <div class="tabs" role="tablist">
-    <button class="tab" id="tab-open" type="button" role="tab" aria-selected="true">open</button>
-    <button class="tab" id="tab-closed" type="button" role="tab" aria-selected="false">closed</button>
-  </div>
-
-  <div class="filters">
-    <span class="fgroup"><span class="flabel">repo</span><span class="scope" id="scope"></span></span>
-    <span class="fgroup"><span class="flabel">who</span><span class="people-bar" id="peoplebar"></span></span>
-    <span class="fgroup" id="lanegroup"><span class="flabel">lane</span><span class="scope" id="lanefilter"></span></span>
-    <span class="fgroup">
-      <button id="waitfilter" type="button" aria-pressed="false">待ち</button>
-      <button id="blind" type="button" aria-pressed="false"></button>
-    </span>
+  <div class="bar">
+    <div class="filters">
+      <span class="fgroup"><span class="flabel">repo</span><span class="scope" id="scope"></span></span>
+      <span class="fgroup"><span class="flabel">who</span><span class="people-bar" id="peoplebar"></span></span>
+      <span class="fgroup" id="lanegroup"><span class="flabel">lane</span><span class="scope" id="lanefilter"></span></span>
+      <span class="fgroup">
+        <button id="waitfilter" type="button" aria-pressed="false">待ち</button>
+        <button id="blind" type="button" aria-pressed="false"></button>
+      </span>
+    </div>
   </div>
 
   <div class="alert" id="alert" hidden></div>
@@ -582,65 +609,79 @@
       <button id="close" aria-label="閉じる">✕</button>
     </div>
     <div class="field">
-      <label for="token">アクセストークン
-        <button class="help" id="tokenhelp" type="button" aria-expanded="false" aria-controls="tokenhelpbox" aria-label="トークンの取り方">?</button>
-      </label>
-      <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
-      <div class="helpbox" id="tokenhelpbox" hidden>
-        <ol>
-          <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> を開く（Fine-grained token）</li>
-          <li><b>Resource owner</b> — <code>example-org</code></li>
-          <li><b>Expiration</b> — 短めに。90日など</li>
-          <li><b>Repository access</b> — Only select repositories → 対象の3つだけ</li>
-          <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ</li>
-          <li><b>Generate token</b> → 出てきた値をこの欄に貼る</li>
-        </ol>
-        <p><code>Metadata: Read-only</code> は自動で付く（外せない）。<code>Contents</code> は付けないこと —— 付けるとリポジトリを丸ごと落とせるトークンになる。</p>
-        <p>org の設定によっては、発行後にオーナーの承認待ちになる。SAML SSO が必須なら Configure SSO で認可する。</p>
-        <p>classic token（<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>）は <code>repo</code> スコープに書き込み権限まで含むので使わない。</p>
+      <button class="sec" id="sec-token" type="button" data-fold aria-expanded="false" aria-controls="f-token">アクセストークン<span class="caret"></span></button>
+      <div class="fold" id="f-token" hidden>
+        <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false" aria-label="アクセストークン">
+        <button class="hint-btn" id="tokenhelp" type="button" data-fold aria-expanded="false" aria-controls="tokenhelpbox">トークンの取り方 ?</button>
+        <div class="helpbox" id="tokenhelpbox" hidden>
+          <ol>
+            <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> を開く（Fine-grained token）</li>
+            <li><b>Resource owner</b> — <code>example-org</code></li>
+            <li><b>Expiration</b> — 短めに。90日など</li>
+            <li><b>Repository access</b> — Only select repositories → 対象の3つだけ</li>
+            <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ</li>
+            <li><b>Generate token</b> → 出てきた値をこの欄に貼る</li>
+          </ol>
+          <p><code>Metadata: Read-only</code> は自動で付く（外せない）。<code>Contents</code> は付けないこと —— 付けるとリポジトリを丸ごと落とせるトークンになる。</p>
+          <p>org の設定によっては、発行後にオーナーの承認待ちになる。SAML SSO が必須なら Configure SSO で認可する。</p>
+          <p>classic token（<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>）は <code>repo</code> スコープに書き込み権限まで含むので使わない。</p>
+        </div>
+        <span class="hint warn" id="cryptonote" hidden></span>
       </div>
-      <span class="hint warn" id="cryptonote" hidden></span>
     </div>
     <div class="field">
-      <label for="mates">Author</label>
-      <input id="mates" placeholder="octocat" autocomplete="off" spellcheck="false">
-      <span class="hint">自分以外で追う人の GitHub ID。複数ならカンマ区切り。チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。ここに載せていない人の PR は「ほかの人のPR」に回る。切り替えた時点で盤面に反映される（次に開いたときも残すには保存）。</span>
+      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-mates">Author<span class="caret"></span></button>
+      <div class="fold" id="f-mates" hidden>
+        <textarea id="mates" rows="2" placeholder="octocat" spellcheck="false" aria-label="Author"></textarea>
+        <span class="hint">自分以外で追う人の GitHub ID。複数はカンマか改行で区切る。チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。ここに載せていない人の PR は「ほかの人のPR」に回る。切り替えた時点で盤面に反映される（次に開いたときも残すには保存）。</span>
+      </div>
       <div class="people" id="people"></div>
     </div>
     <div class="field">
-      <label for="repos">リポジトリ</label>
-      <textarea id="repos" rows="3" spellcheck="false"></textarea>
-      <span class="hint">owner/repo を1行ずつ。下のトグルはヘッダーのものと同じ絞り込みで、押した時点で盤面に反映される（次に開いたときも残すには保存）。</span>
+      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repos">リポジトリ<span class="caret"></span></button>
+      <div class="fold" id="f-repos" hidden>
+        <textarea id="repos" rows="3" spellcheck="false" aria-label="リポジトリ"></textarea>
+        <span class="hint">owner/repo を1行ずつ。下のトグルは盤面の上の帯にあるものと同じ絞り込みで、押した時点で盤面に反映される（次に開いたときも残すには保存）。</span>
+      </div>
       <div class="repo-toggles" id="repofilter"></div>
     </div>
     <div class="field">
-      <label for="interval">自動更新</label>
-      <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false">
-      <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-interval">自動更新<span class="caret"></span></button>
+      <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="自動更新">
+      <div class="fold" id="f-interval" hidden>
+        <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+      </div>
       <span class="hint" id="intervalout"></span>
     </div>
     <div class="field">
-      <label for="quietfrom">自動更新を止める時間帯</label>
+      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-quiet">自動更新を止める時間帯<span class="caret"></span></button>
       <div class="times">
-        <input id="quietfrom" type="time">
+        <input id="quietfrom" type="time" aria-label="自動更新を止める開始時刻">
         <span class="to">〜</span>
-        <input id="quietto" type="time">
+        <input id="quietto" type="time" aria-label="自動更新を止める終了時刻">
       </div>
-      <span class="hint">この時間帯は自動更新しない。更新ボタンと <code>r</code> はいつでも効く。<code>19:00 〜 09:00</code> のように日をまたぐ指定もできる。空にすると止めない。</span>
+      <div class="fold" id="f-quiet" hidden>
+        <span class="hint">この時間帯は自動更新しない。更新ボタンと <code>r</code> はいつでも効く。<code>19:00 〜 09:00</code> のように日をまたぐ指定もできる。空にすると止めない。</span>
+      </div>
       <span class="hint" id="quietout"></span>
     </div>
     <div class="field">
-      <label>自動更新する曜日</label>
+      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-days">自動更新する曜日<span class="caret"></span></button>
       <div class="repo-toggles" id="dayfilter"></div>
+      <div class="fold" id="f-days" hidden>
+        <span class="hint">押した時点では効かない。保存すると自動更新に反映される。</span>
+      </div>
       <span class="hint" id="dayout"></span>
     </div>
     <div class="field">
-      <label for="memodelay">メモの吹き出し</label>
+      <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-memodelay">メモの吹き出し<span class="caret"></span></button>
       <div class="slider">
-        <input id="memodelay" type="range" min="0" step="1">
+        <input id="memodelay" type="range" min="0" step="1" aria-label="メモの吹き出しが出るまで">
         <span class="val" id="memodelayout"></span>
       </div>
-      <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。</span>
+      <div class="fold" id="f-memodelay" hidden>
+        <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。</span>
+      </div>
     </div>
     <div class="actions">
       <button class="save" id="save">保存して更新</button>
@@ -1773,6 +1814,9 @@ function fillForm() {
   renderPeople();
   renderRepoFilter();
   renderLaneFilter();
+  // 開閉は覚えない。開くたび全部閉じた状態から始まる（HTML の hidden 属性）。
+  // 例外はトークンだけ —— まだ入っていないなら開いた状態で見せる
+  fold($("sec-token"), !cfg.token);
 }
 /* "09:00" を 540 に。読めなければ null */
 function parseHM(v) {
@@ -1828,7 +1872,8 @@ function setSettings(open) {
   $("scrim").classList.toggle("open", open);
   $("toggle").setAttribute("aria-expanded", String(open));
   document.body.classList.toggle("locked", open);
-  (open ? $("token") : $("toggle")).focus();
+  // トークンの欄が畳まれているときは、そこへフォーカスを飛ばせない
+  (open ? ($("f-token").hidden ? $("close") : $("token")) : $("toggle")).focus();
 }
 
 /* メモ。開いている間だけ、対象の PR を覚えておく */
@@ -1922,17 +1967,25 @@ $("refresh").onclick = () => {
 };
 $("mates").oninput = () => { renderPeople(); renderBoard(); };
 $("repos").oninput = renderRepoFilter;
-/* つながっていないときだけ「?」を赤くする。直し方はほぼ必ずトークン側にある */
-function setTokenTrouble(bad) {
-  $("tokenhelp").classList.toggle("bad", bad);
+/* 設定の中の開閉。data-fold のボタンが aria-controls の中身を出し入れする。
+   畳む側に入れるのは、初回に一度決めたら触らない初期設定と説明文。
+   押した時点で盤面に効くものは畳まず外に出しておく */
+function fold(btn, open) {
+  btn.setAttribute("aria-expanded", String(open));
+  $(btn.getAttribute("aria-controls")).hidden = !open;
 }
 
-$("tokenhelp").onclick = () => {
-  const box = $("tokenhelpbox");
-  const opening = box.hidden;
-  box.hidden = !opening;
-  $("tokenhelp").setAttribute("aria-expanded", String(opening));
-};
+document.querySelectorAll("[data-fold]").forEach((btn) => {
+  btn.onclick = () => fold(btn, btn.getAttribute("aria-expanded") !== "true");
+});
+
+/* つながっていないときだけ赤くする。直し方はほぼ必ずトークン側にある。
+   「?」は畳む側に入って見えないので、赤は見出しに出し、同時に開いて手が届く
+   状態にする。false で閉じはしない —— 開けたままにしている人の邪魔になる */
+function setTokenTrouble(bad) {
+  $("sec-token").classList.toggle("bad", bad);
+  if (bad) fold($("sec-token"), true);
+}
 
 $("interval").oninput = showInterval;
 /* 自動更新する曜日。保存するまでは画面側だけで持つ */
