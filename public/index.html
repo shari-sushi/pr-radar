@@ -438,17 +438,13 @@
     cursor: default;
   }
   .pr .m .cnt .z { color: var(--faint); }
-  /* 前に見たときとの差。薄い琥珀の地に濃い琥珀の字だと、同系色どうしで
-     沈む。差のほうを塗りにして明度を反転させる */
-  .pr .m .cnt .d {
-    margin-left: 5px; padding: 0 4px; border-radius: 2px;
-    background: #8A5200; color: #FFF6E8; font-weight: 700;
-  }
-  /* 前に見たときと数が違うときだけ、地色を敷いて押せるようにする。
-     字の色は動かさない。11px の等幅では色差が読み取りにくく、
-     0 を薄くしている区別まで潰れる */
-  .pr .m .cnt.new { background: #FBEDD6; cursor: pointer; }
-  .pr .m .cnt.new:hover { background: #F5DFB8; }
+  /* 前に見たときとの差。フッターは全部グレーなので、色が付いた文字が
+     1つあるだけで足りる。塗りや太字にすると、レーンの帯より目立ってしまう */
+  .pr .m .cnt .d { margin-left: 4px; color: #B26B00; }
+  /* 差があるときだけ押せる。地色は敷かない。+n が同じことを言っており、
+     二重に出すと +n を目立たせるために塗るはめになる */
+  .pr .m .cnt.new { cursor: pointer; }
+  .pr .m .cnt.new:hover { background: #F3F6F7; }
   .chip {
     font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
     padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.5;
