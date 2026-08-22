@@ -571,6 +571,11 @@
       <span class="hint" id="quietout"></span>
     </div>
     <div class="field">
+      <label>自動更新する曜日</label>
+      <div class="repo-toggles" id="dayfilter"></div>
+      <span class="hint" id="dayout"></span>
+    </div>
+    <div class="field">
       <label for="memodelay">メモの吹き出し</label>
       <div class="slider">
         <input id="memodelay" type="range" min="0" step="1">
@@ -618,6 +623,7 @@ const DEFAULTS = {
   interval: 60,
   quietFrom: "",  // 自動更新を止める時間帯。空なら止めない
   quietTo: "",
+  days: [0, 1, 2, 3, 4, 5, 6],   // 自動更新する曜日（0=日）。既定は毎日
   me: "",     // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
   lanes: []   // 盤面から外すレーン（LANES の id）。既定は全部表示
 };
@@ -1250,7 +1256,7 @@ async function refresh() {
   const t = new Date();
   const hh = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
   $("status").innerHTML = "更新 <b>" + hh + "</b>" +
-    (inQuietHours() ? " · 自動更新 停止中" : "") +
+    (autoPaused() ? " · 自動更新 停止中" : "") +
     (gh.remaining ? " · 残 " + gh.remaining : "");
 }
 
@@ -1598,6 +1604,9 @@ function fillForm() {
   $("quietfrom").value = cfg.quietFrom || "";
   $("quietto").value = cfg.quietTo || "";
   showQuiet();
+  daysOn = new Set(pickedDays());
+  renderDays();
+  showDays();
   $("memodelay").max = DELAY_STEPS.length - 1;   // 目盛りの数は配列で決める
   $("memodelay").value = delayIndex(memoDelay);
   applyMemoDelay();
@@ -1625,9 +1634,25 @@ function inQuietHours(at) {
   return from < to ? (m >= from && m < to) : (m >= from || m < to);
 }
 
+const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
+
+/* 設定に入っている曜日だけを拾う。壊れていたら「毎日」に倒す */
+function pickedDays() {
+  if (!Array.isArray(cfg.days)) return [0, 1, 2, 3, 4, 5, 6];
+  return cfg.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+}
+
+/* 今日は自動更新する曜日か。1つも選ばれていなければ動かさない */
+function runsToday(at) {
+  return pickedDays().includes((at || new Date()).getDay());
+}
+
+/* いま自動更新が止まっているか。曜日と時間帯のどちらでも止まる */
+const autoPaused = (at) => !runsToday(at) || inQuietHours(at);
+
 /* タイマーから呼ぶほうだけ止める。更新ボタンと r はいつでも効く */
 function autoRefresh() {
-  if (inQuietHours()) return;
+  if (autoPaused()) return;
   refresh();
 }
 
@@ -1727,6 +1752,41 @@ $("tokenhelp").onclick = () => {
 };
 
 $("interval").oninput = showInterval;
+/* 自動更新する曜日。保存するまでは画面側だけで持つ */
+let daysOn = new Set();
+
+function renderDays() {
+  const box = $("dayfilter");
+  box.textContent = "";
+  for (let d = 0; d < 7; d++) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "repo";
+    b.textContent = DAY_NAMES[d];
+    b.setAttribute("aria-pressed", String(daysOn.has(d)));
+    b.onclick = () => {
+      if (daysOn.has(d)) daysOn.delete(d);
+      else daysOn.add(d);
+      renderDays();
+      showDays();
+    };
+    box.append(b);
+  }
+}
+
+/* 全部外すと自動更新が止まる。黙って止まると原因が分からないので言う */
+function showDays() {
+  const el = $("dayout");
+  el.classList.remove("warn");
+  if (!daysOn.size) {
+    el.textContent = "1つも選ばれていません。このままだと自動更新しません";
+    el.classList.add("warn");
+    return;
+  }
+  if (daysOn.size === 7) { el.textContent = "毎日"; return; }
+  el.textContent = [...daysOn].sort((a, b) => a - b).map((d) => DAY_NAMES[d]).join("・") + " に動く";
+}
+
 $("quietfrom").oninput = showQuiet;
 $("quietto").oninput = showQuiet;
 
@@ -1785,6 +1845,7 @@ $("save").onclick = async () => {
     interval: $("interval").value.trim(),
     quietFrom: $("quietfrom").value,
     quietTo: $("quietto").value,
+    days: [...daysOn].sort((a, b) => a - b),
     me: cfg.me,
     lanes: [...laneOff]
   };
