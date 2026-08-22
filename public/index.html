@@ -459,12 +459,23 @@
 
   .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
 
-  /* author のチェック。水平線の直下に1行で並べ、はみ出たときだけ横に流す */
+  /* author のトグル。水平線の直下に1行で並べ、はみ出たときだけ横に流す */
   .people-bar {
-    display: flex; gap: 16px; align-items: center;
+    display: flex; gap: 7px; align-items: center;
     margin: -12px 0 18px; padding-bottom: 4px;
     overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
   }
+  /* リポジトリのトグル（.repo）とは別物なので、形で見分けられるようにする。
+     あちらは角ばった箱に取り消し線、こちらは丸い錠剤に破線 */
+  .who {
+    flex: none; white-space: nowrap;
+    text-transform: none; letter-spacing: .02em;
+    padding: 3px 11px; border-radius: 999px;
+    color: var(--faint); border-color: var(--line);
+  }
+  .who[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  .who[aria-pressed="false"] { border-style: dashed; opacity: .6; }
+  .who:hover { color: var(--ink); border-color: var(--dim); }
   .people-bar:empty { display: none; }
   .people-bar label {
     display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
@@ -1517,32 +1528,56 @@ function paintPeople(box, isDrawer) {
   }
 
   for (const person of peopleList()) {
-    const label = document.createElement("label");
-    const box2 = document.createElement("input");
-    box2.type = "checkbox";
-    box2.checked = !peopleOff.has(person.key);
-    box2.dataset.person = person.key;
-    box2.onchange = () => {
-      const on = box2.checked;
-      if (on) peopleOff.delete(person.key);
-      else peopleOff.add(person.key);
-      saveView();
-      document.querySelectorAll(".people input, .people-bar input").forEach((other) => {
-        if (other.dataset.person === person.key) other.checked = on;
-      });
-      renderBoard();
-    };
-    const name = document.createElement("span");
-    name.textContent = "@" + person.login;
-    label.append(box2, name);
-    if (person.self && isDrawer) {
-      const tag = document.createElement("span");
-      tag.className = "self";
-      tag.textContent = "自分";
-      label.append(tag);
-    }
-    box.append(label);
+    box.append(isDrawer ? drawerRow(person) : barToggle(person));
   }
+}
+
+/* 設定の中はチェックボックスのまま。一覧として縦に読むので、
+   同じ位置に四角が並んでいるほうが追いやすい */
+function drawerRow(person) {
+  const label = document.createElement("label");
+  const check = document.createElement("input");
+  check.type = "checkbox";
+  check.checked = !peopleOff.has(person.key);
+  check.dataset.person = person.key;
+  check.onchange = () => togglePerson(person.key, check.checked);
+
+  const name = document.createElement("span");
+  name.textContent = "@" + person.login;
+  label.append(check, name);
+
+  if (person.self) {
+    const tag = document.createElement("span");
+    tag.className = "self";
+    tag.textContent = "自分";
+    label.append(tag);
+  }
+  return label;
+}
+
+/* 盤面の上はトグル。横1行に並ぶので、押せる範囲が名前の幅ぶんあるほうがいい */
+function barToggle(person) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "who";
+  b.dataset.person = person.key;
+  b.textContent = "@" + person.login;
+  b.setAttribute("aria-pressed", String(!peopleOff.has(person.key)));
+  b.onclick = () => togglePerson(person.key, b.getAttribute("aria-pressed") !== "true");
+  return b;
+}
+
+function togglePerson(key, on) {
+  if (on) peopleOff.delete(key);
+  else peopleOff.add(key);
+  saveView();
+  // もう一方の見た目だけ合わせる。描き直すと押した瞬間にフォーカスが飛ぶ
+  document.querySelectorAll("[data-person]").forEach((el) => {
+    if (el.dataset.person !== key) return;
+    if (el.tagName === "INPUT") el.checked = on;
+    else el.setAttribute("aria-pressed", String(on));
+  });
+  renderBoard();
 }
 
 function renderRepoFilter() {
