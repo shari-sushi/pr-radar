@@ -69,22 +69,23 @@
   .repo[aria-pressed="false"] { text-decoration: line-through; text-decoration-color: var(--line); }
   .repo:hover { color: var(--ink); }
   /* 状態の軸だけをタブにする。誰のPRかはレーンが持っているので混ぜない。
-     見出しの下罫線と選択中タブの下線は同じ 2px の ink なので、
-     下線を border ではなく文字装飾にして罫線と取り合わないようにする */
-  .top .tabs { display: flex; align-items: baseline; gap: 14px; flex: none; }
+     ひと続きの枠を2つに割った切り替えスイッチにする。絞り込みのトグル
+     （箱・錠剤・角丸）はどれも「押されている枠」なので、塗りつぶしで
+     見分けられるようにした。文字は baseline を持たないので中央で揃える */
+  .top .tabs {
+    display: inline-flex; flex: none; align-self: center;
+    border: 1px solid var(--line); border-radius: 3px; overflow: hidden;
+  }
   .tab {
-    font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em;
-    text-transform: uppercase;
-    border: 0; border-radius: 0; background: none; padding: 0;
-    color: var(--faint);
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; padding: 4px 12px;
+    border: 0; border-radius: 0;
+    background: var(--panel); color: var(--faint);
   }
-  .tab:hover { color: var(--dim); background: none; border-color: transparent; }
-  .tab[aria-selected="true"] {
-    color: var(--ink);
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-    text-underline-offset: 4px;
-  }
+  .tab + .tab { border-left: 1px solid var(--line); }
+  .tab:hover { color: var(--ink); background: #F3F6F7; border-color: var(--line); }
+  .tab[aria-selected="true"],
+  .tab[aria-selected="true"]:hover { background: var(--dim); color: var(--panel); }
   .top .spacer { flex: 1 1 auto; }
   .status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); letter-spacing: .03em; }
   .status b { color: var(--dim); font-weight: 500; }
