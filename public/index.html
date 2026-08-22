@@ -438,6 +438,8 @@
     cursor: default;
   }
   .pr .m .cnt .z { color: var(--faint); }
+  /* 前に見たときとの差。地色より濃い同系色にして、数字と読み分ける */
+  .pr .m .cnt .d { margin-left: 4px; color: #A5670A; }
   /* 前に見たときと数が違うときだけ、地色を敷いて押せるようにする。
      字の色は動かさない。11px の等幅では色差が読み取りにくく、
      0 を薄くしている区別まで潰れる */
@@ -1363,7 +1365,13 @@ function countsHtml(pr) {
   const now = [c.comments, c.reviews, c.inline];
   const was = seenOf(pr);
   const changed = now.some((n, i) => n !== was[i]);
-  const one = (label, n) => '<span class="' + (n ? "" : "z") + '">' + label + ": " + n + "</span>";
+  /* 差は +n / -n で添える。増減が読めれば、開くかどうかその場で決まる */
+  const one = (label, n, before) => {
+    const d = n - before;
+    return '<span class="' + (n ? "" : "z") + '">' + label + ": " + n +
+      (d ? '<span class="d">' + (d > 0 ? "+" : "-") + Math.abs(d) + "</span>" : "") +
+      "</span>";
+  };
 
   return '<span class="sep">|</span>' +
     '<button class="cnt' + (changed ? " new" : "") + '" type="button"' +
@@ -1371,7 +1379,9 @@ function countsHtml(pr) {
       ' title="' + (changed
         ? "前に見たとき comment: " + was[0] + " review: " + was[1] + " inline: " + was[2] + " — 押すといまの数を覚える"
         : "押すといまの数を覚える") + '">' +
-      one("comment", c.comments) + one("review", c.reviews) + one("inline", c.inline) +
+      one("comment", c.comments, was[0]) +
+      one("review", c.reviews, was[1]) +
+      one("inline", c.inline, was[2]) +
     "</button>";
 }
 
