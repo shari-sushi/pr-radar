@@ -266,20 +266,6 @@
   .field .hint.warn { color: var(--review); }
   .field .hint.warn[hidden] { display: none; }
 
-  .people { display: grid; gap: 1px; margin-top: 3px; }
-  .people label {
-    display: flex; align-items: center; gap: 8px; cursor: pointer;
-    font-family: var(--mono); font-size: 12.5px; color: var(--ink);
-    letter-spacing: 0; text-transform: none; padding: 3px 0;
-  }
-  .people input[type="checkbox"] {
-    width: auto; padding: 0; border: 0; margin: 0; flex: none;
-    accent-color: var(--ready);
-  }
-  .people .self {
-    font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
-  }
-  .people .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   .repo-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
   /* 自動更新する曜日。日と土だけ下地を敷いて、週末だとひと目で分かるようにする。
      .repo は背景を「押されているか」の軸に使っているが、on/off は取り消し線と
@@ -597,16 +583,10 @@
   .who[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
   .who[aria-pressed="false"] { border-style: dashed; opacity: .6; }
   .who:hover { color: var(--ink); border-color: var(--dim); }
+  /* 自分の印。名前と同じボタンの中に入るので、字を落として間を空ける。
+     人数が増えると「先頭が自分」では分からなくなるので、位置に頼らない */
+  .who .self { margin-left: 6px; font-size: 10px; letter-spacing: .08em; color: var(--faint); }
   .people-bar:empty { display: none; }
-  .people-bar label {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    flex: none; white-space: nowrap;
-    font-family: var(--mono); font-size: 12px; color: var(--dim);
-  }
-  .people-bar label:hover { color: var(--ink); }
-  .people-bar input[type="checkbox"] {
-    width: auto; margin: 0; padding: 0; border: 0; flex: none; accent-color: var(--ready);
-  }
 
   .alert {
     background: var(--panel); border: 1px solid var(--review); border-left-width: 3px;
@@ -672,7 +652,7 @@
         <div class="fold" id="f-people" hidden>
           <span class="hint">チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。</span>
         </div>
-        <div class="people" id="people"></div>
+        <div class="repo-toggles" id="people"></div>
       </div>
       <div class="field">
         <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repofilter">出すリポジトリ<span class="caret"></span></button>
@@ -1365,15 +1345,12 @@ function syncRepos() {
   renderBoard();
 }
 
-/* リポジトリ名のトグル。押されているものだけ盤面に出す */
-function renderScope() {
-  const box = $("scope");
+/* リポジトリ名のトグル。人と同じで、設定の中と盤面の上の2か所に同じものが出る。
+   見ているのは hiddenRepos ひとつなので、描くところも1つにする。
+   並べる元だけが違う —— 帯は取ってきたリポジトリ、設定は打ってあるリポジトリ */
+function paintRepos(box, repos) {
   box.textContent = "";
-  if (!shownRepos.length) {
-    box.textContent = "リポジトリ未設定";
-    return;
-  }
-  for (const repo of shownRepos) {
+  for (const repo of repos) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "repo";
@@ -1387,6 +1364,15 @@ function renderScope() {
     };
     box.append(b);
   }
+}
+
+function renderScope() {
+  const box = $("scope");
+  if (!shownRepos.length) {
+    box.textContent = "リポジトリ未設定";
+    return;
+  }
+  paintRepos(box, shownRepos);
 }
 
 /* PR をどのレーンに置くか。null なら盤面に出さない */
@@ -1766,8 +1752,8 @@ function peopleList() {
 }
 
 /* ログイン名は利用者の入力なので、innerHTML ではなく DOM API で組み立てる */
-/* 同じチェックが設定の中と盤面の上の2か所に出る。どちらも peopleOff を
-   見ているだけなので、片方を押したらもう片方の checked だけ合わせる。
+/* 同じトグルが設定の中と盤面の上の2か所に出る。どちらも peopleOff を
+   見ているだけなので、片方を押したらもう片方の aria-pressed だけ合わせる。
    描き直さないのは、押した瞬間にフォーカスが飛ぶのを避けるため */
 function renderPeople() {
   paintPeople($("people"), true);
@@ -1777,6 +1763,7 @@ function renderPeople() {
 function paintPeople(box, isDrawer) {
   box.textContent = "";
 
+  // 案内は設定の中だけ。盤面の上に出しても、そこに一覧を直す欄は無い
   if (!cfg.me && isDrawer) {
     const p = document.createElement("p");
     p.className = "none";
@@ -1784,41 +1771,23 @@ function paintPeople(box, isDrawer) {
     box.append(p);
   }
 
-  for (const person of peopleList()) {
-    box.append(isDrawer ? drawerRow(person) : barToggle(person));
-  }
+  for (const person of peopleList()) box.append(personToggle(person));
 }
 
-/* 設定の中はチェックボックスのまま。一覧として縦に読むので、
-   同じ位置に四角が並んでいるほうが追いやすい */
-function drawerRow(person) {
-  const label = document.createElement("label");
-  const check = document.createElement("input");
-  check.type = "checkbox";
-  check.checked = !peopleOff.has(person.key);
-  check.dataset.person = person.key;
-  check.onchange = () => togglePerson(person.key, check.checked);
-
-  const name = document.createElement("span");
-  name.textContent = "@" + person.login;
-  label.append(check, name);
-
-  if (person.self) {
-    const tag = document.createElement("span");
-    tag.className = "self";
-    tag.textContent = "自分";
-    label.append(tag);
-  }
-  return label;
-}
-
-/* 盤面の上はトグル。横1行に並ぶので、押せる範囲が名前の幅ぶんあるほうがいい */
-function barToggle(person) {
+/* 設定の中と盤面の上で同じもの。押せる範囲が名前の幅ぶんある方がいいので、
+   縦に並ぶチェックボックスではなくトグルにしてある */
+function personToggle(person) {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "who";
   b.dataset.person = person.key;
   b.textContent = "@" + person.login;
+  if (person.self) {
+    const tag = document.createElement("span");
+    tag.className = "self";
+    tag.textContent = "自分";
+    b.append(tag);
+  }
   b.setAttribute("aria-pressed", String(!peopleOff.has(person.key)));
   b.onclick = () => togglePerson(person.key, b.getAttribute("aria-pressed") !== "true");
   return b;
@@ -1830,38 +1799,23 @@ function togglePerson(key, on) {
   saveView();
   // もう一方の見た目だけ合わせる。描き直すと押した瞬間にフォーカスが飛ぶ
   document.querySelectorAll("[data-person]").forEach((el) => {
-    if (el.dataset.person !== key) return;
-    if (el.tagName === "INPUT") el.checked = on;
-    else el.setAttribute("aria-pressed", String(on));
+    if (el.dataset.person === key) el.setAttribute("aria-pressed", String(on));
   });
   renderBoard();
 }
 
 function renderRepoFilter() {
   const box = $("repofilter");
-  box.textContent = "";
   const repos = $("repos").value.split("\n").map((s) => s.trim()).filter(Boolean);
   if (!repos.length) {
+    box.textContent = "";
     const p = document.createElement("p");
     p.className = "none";
     p.textContent = "リポジトリを入れると、ここに並びます。";
     box.append(p);
     return;
   }
-  for (const repo of repos) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "repo";
-    b.textContent = repo.split("/")[1] || repo;
-    b.title = repo;
-    b.setAttribute("aria-pressed", String(!hiddenRepos.has(repo)));
-    b.onclick = () => {
-      if (hiddenRepos.has(repo)) hiddenRepos.delete(repo);
-      else hiddenRepos.add(repo);
-      syncRepos();
-    };
-    box.append(b);
-  }
+  paintRepos(box, repos);
 }
 
 /* 盤面に出すレーン。押した時点で view に書く */
