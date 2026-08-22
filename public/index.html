@@ -438,9 +438,12 @@
     cursor: default;
   }
   .pr .m .cnt .z { color: var(--faint); }
-  /* 前に見たときとの差。フッターは全部グレーなので、色が付いた文字が
-     1つあるだけで足りる。塗りや太字にすると、レーンの帯より目立ってしまう */
-  .pr .m .cnt .d { margin-left: 4px; color: #B26B00; }
+  /* 前に見たときとの差。11px だと色だけでは沈むので、淡い下地で「かたまり」
+     を作る。濃い塗りにするとレーンの帯より目立ってしまうため、あくまで淡く */
+  .pr .m .cnt .d {
+    margin-left: 5px; padding: 0 4px; border-radius: 2px;
+    background: #F7E3C4; color: #8A5200;
+  }
   /* 差があるときだけ押せる。地色は敷かない。+n が同じことを言っており、
      二重に出すと +n を目立たせるために塗るはめになる */
   .pr .m .cnt.new { cursor: pointer; }
