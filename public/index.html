@@ -323,7 +323,16 @@
     border-top: 1px solid var(--line); padding-top: 12px;
   }
   .settings .actions .note { font-size: 11.5px; color: var(--faint); }
-  .save { border-color: var(--ink) !important; color: var(--ink) !important; font-weight: 700; }
+  .save, .save:hover { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+  /* 押せないときは触れないものに見せる。.more[disabled] と同じ扱い */
+  .save[disabled], .save[disabled]:hover {
+    border-color: var(--line); color: var(--faint); font-weight: 400;
+    background: none; cursor: default;
+  }
+  /* 押せない理由。ボタンが灰色になっただけでは、なぜ押せないのか言っていない。
+     長い注意書きと1行につながって読めないよう、自分の行を持たせる */
+  .settings .actions #savenote { flex: 1 0 100%; }
+  .settings .actions #savenote[hidden] { display: none; }
 
   .test-out {
     grid-column: 1 / -1;
@@ -759,6 +768,7 @@
         <button class="save" id="save">保存して更新</button>
         <button id="test">接続テスト</button>
         <button id="forget">トークンを消す</button>
+        <span class="note" id="savenote" hidden>変更はありません</span>
         <span class="note">設定はこのブラウザに保存されます（トークンは <code>key.js</code> の鍵で暗号化）。読み取り専用のトークンを使ってください。</span>
       </div>
       <div class="test-out" id="testout" hidden></div>
@@ -1891,6 +1901,18 @@ function renderLaneFilter() {
    トークンを入れた直後に使用設定が一瞬消えることになる。
 
    リポジトリの方は逆に、打った値がそのまま盤面に効く欄なので画面側を見る */
+/* 「保存して更新」が書くのは基本設定の3つだけ（12）。3つとも cfg と同じなら
+   押しても何も起きないので押せなくする。
+   使用設定は触った時点で入るので、ここでは見ない。
+   基本設定は即時保存の対象外なので、打っている間 cfg は古いまま
+   ＝「変更あり」で安定する（毎文字 disabled が入れ替わることがない） */
+function paintSaveState() {
+  const same = (el, saved) => $(el).value.trim() === String(saved == null ? "" : saved).trim();
+  const dirty = !(same("token", cfg.token) && same("mates", cfg.mates) && same("repos", cfg.repos));
+  $("save").disabled = !dirty;
+  $("savenote").hidden = dirty;
+}
+
 function paintGroups() {
   const ready = !!String(cfg.token || "").trim() && !!$("repos").value.trim();
   $("g-usage").hidden = !ready;
@@ -1916,6 +1938,7 @@ function fillForm() {
   renderRepoFilter();
   renderLaneFilter();
   paintGroups();
+  paintSaveState();
   // 開閉は覚えない。開くたび全部閉じた状態から始まる（HTML の hidden 属性）。
   // 例外はトークンだけ —— まだ入っていないなら開いた状態で見せる
   fold($("sec-token"), !cfg.token);
@@ -2067,8 +2090,10 @@ $("refresh").onclick = () => {
   // 自動更新では取り直さない。ページを送った分が毎回巻き戻ってしまうため
   if (activeTab === "closed") loadClosed(true);
 };
-$("mates").oninput = () => { renderPeople(); renderBoard(); };
-$("repos").oninput = () => { renderRepoFilter(); paintGroups(); };
+$("mates").oninput = () => { renderPeople(); renderBoard(); paintSaveState(); };
+$("repos").oninput = () => { renderRepoFilter(); paintGroups(); paintSaveState(); };
+/* トークンは打つだけでは保存しない。保存ボタンの出番があるかだけを見る */
+$("token").oninput = paintSaveState;
 /* 設定の中の開閉。data-fold のボタンが aria-controls の中身を出し入れする。
    畳む側に入れるのは、初回に一度決めたら触らない初期設定と説明文。
    押した時点で盤面に効くものは畳まず外に出しておく */
@@ -2269,6 +2294,7 @@ $("save").onclick = async () => {
   tokenNote = "";
   await saveConfig();
   paintGroups();
+  paintSaveState();
   $("testout").hidden = true;
   setSettings(false);
   schedule();
@@ -2280,6 +2306,7 @@ $("forget").onclick = async () => {
   tokenNote = "";
   await saveConfig();
   paintGroups();
+  paintSaveState();
   refresh();
 };
 
