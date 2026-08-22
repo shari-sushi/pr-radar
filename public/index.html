@@ -459,12 +459,28 @@
 
   .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
 
-  /* author のトグル。水平線の直下に1行で並べ、はみ出たときだけ横に流す */
-  .people-bar {
-    display: flex; gap: 7px; align-items: center;
+  /* 絞り込みは全部この1行に置く。ヘッダーには識別と全体操作だけ残す */
+  .filters {
+    display: flex; align-items: center; gap: 18px;
     margin: -12px 0 18px; padding-bottom: 4px;
     overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
   }
+  .fgroup { display: flex; align-items: center; gap: 7px; flex: none; }
+  .flabel {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .people-bar { display: flex; align-items: center; gap: 7px; }
+  /* レーンのトグル。repo（角ばった箱）とも who（丸い錠剤）とも違う第3の形 */
+  .lane-tag {
+    flex: none; white-space: nowrap;
+    text-transform: none; letter-spacing: .02em;
+    padding: 3px 9px; border-radius: 4px;
+    color: var(--faint); border-color: var(--line);
+  }
+  .lane-tag[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  .lane-tag[aria-pressed="false"] { opacity: .5; }
+  .lane-tag:hover { color: var(--ink); border-color: var(--dim); }
   /* リポジトリのトグル（.repo）とは別物なので、形で見分けられるようにする。
      あちらは角ばった箱に取り消し線、こちらは丸い錠剤に破線 */
   .who {
@@ -504,20 +520,25 @@
 <div class="wrap">
   <div class="top">
     <h1 class="wordmark"><button id="showall" type="button" title="すべてのリポジトリを表示">PRレーダー</button></h1>
-    <span class="scope" id="scope"></span>
     <span class="spacer"></span>
     <span class="status" id="status">読み込み待ち</span>
     <button id="refresh" aria-label="更新" title="更新">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
     </button>
-    <button id="waitfilter" type="button" aria-pressed="false">待ち</button>
-    <button id="blind" type="button" aria-pressed="false"></button>
     <button class="burger" id="toggle" aria-label="設定" aria-expanded="false" aria-controls="settings">
       <span></span><span></span><span></span>
     </button>
   </div>
 
-  <div class="people-bar" id="peoplebar"></div>
+  <div class="filters">
+    <span class="fgroup"><span class="flabel">repo</span><span class="scope" id="scope"></span></span>
+    <span class="fgroup"><span class="flabel">who</span><span class="people-bar" id="peoplebar"></span></span>
+    <span class="fgroup"><span class="flabel">lane</span><span class="scope" id="lanefilter"></span></span>
+    <span class="fgroup">
+      <button id="waitfilter" type="button" aria-pressed="false">待ち</button>
+      <button id="blind" type="button" aria-pressed="false"></button>
+    </span>
+  </div>
 
   <div class="alert" id="alert" hidden></div>
 
@@ -559,11 +580,6 @@
       <textarea id="repos" rows="3" spellcheck="false"></textarea>
       <span class="hint">owner/repo を1行ずつ。下のトグルはヘッダーのものと同じ絞り込みで、押した時点で盤面に反映される（次に開いたときも残すには保存）。</span>
       <div class="repo-toggles" id="repofilter"></div>
-    </div>
-    <div class="field">
-      <label>レーン</label>
-      <span class="hint">盤面に出すレーン。外したものは丸ごと消える。切り替えた時点で反映される（次に開いたときも残すには保存）。</span>
-      <div class="repo-toggles" id="lanefilter"></div>
     </div>
     <div class="field">
       <label for="interval">自動更新</label>
@@ -636,7 +652,6 @@ const DEFAULTS = {
   quietTo: "",
   days: [0, 1, 2, 3, 4, 5, 6],   // 自動更新する曜日（0=日）。既定は毎日
   me: "",     // /user で分かった自分のログイン。一覧に自分を出すために覚えておく
-  lanes: []   // 盤面から外すレーン（LANES の id）。既定は全部表示
 };
 const KEY = "pr-radar:config";
 
@@ -1105,6 +1120,7 @@ function loadView() {
   // 知らない値や空なら、どちらも「出す」側に倒す
   showOut = view.showOut !== false;
   showWaiting = view.showWaiting !== false;
+  laneOff = new Set(strings(view.laneOff));
   memoDelay = snapDelay(view.memoDelay);
   // 以前は設定側（cfg.off / cfg.hidden）に置いていた。残っていれば一度だけ
   // 引き継ぎ、以後は view だけを見る
@@ -1116,8 +1132,10 @@ function loadView() {
 }
 
 function saveView() {
-  writeJson(VIEW_KEY,
-    { showOut, showWaiting, memoDelay, off: [...peopleOff], hidden: [...hiddenRepos] });
+  writeJson(VIEW_KEY, {
+    showOut, showWaiting, memoDelay,
+    off: [...peopleOff], hidden: [...hiddenRepos], laneOff: [...laneOff]
+  });
 }
 const hiddenRepos = new Set();
 
@@ -1616,13 +1634,14 @@ function renderLaneFilter() {
   for (const lane of LANES) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "repo";
+    b.className = "lane-tag";
     b.textContent = lane.rail;
     b.title = lane.title;
     b.setAttribute("aria-pressed", String(!laneOff.has(lane.id)));
     b.onclick = () => {
       if (laneOff.has(lane.id)) laneOff.delete(lane.id);
       else laneOff.add(lane.id);
+      saveView();
       renderLaneFilter();
       syncLanes();
     };
@@ -1645,7 +1664,6 @@ function fillForm() {
   $("memodelay").max = DELAY_STEPS.length - 1;   // 目盛りの数は配列で決める
   $("memodelay").value = delayIndex(memoDelay);
   applyMemoDelay();
-  laneOff = new Set(cfg.lanes || []);
   renderPeople();
   renderRepoFilter();
   renderLaneFilter();
@@ -1882,7 +1900,6 @@ $("save").onclick = async () => {
     quietTo: $("quietto").value,
     days: [...daysOn].sort((a, b) => a - b),
     me: cfg.me,
-    lanes: [...laneOff]
   };
   tokenNote = "";
   await saveConfig();
