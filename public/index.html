@@ -282,6 +282,11 @@
   .people .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   .repo-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
   .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
+  /* 入力欄と計算結果を1行に。入る値は 60 / 60*30 / 60*60*24 くらいなので、
+     桁数に見合う幅で止めて、余りは結果の側に渡す */
+  .interval { display: flex; align-items: center; gap: 8px; }
+  .interval input { flex: none; max-width: 8em; min-width: 0; }
+  .interval .hint { flex: 1 1 0; min-width: 0; }
   .times { display: flex; align-items: center; gap: 8px; }
   .times input { flex: 1 1 0; min-width: 0; }
   .times .to {
@@ -653,11 +658,14 @@
       </div>
       <div class="field">
         <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-interval">自動更新<span class="caret"></span></button>
-        <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="自動更新">
+        <div class="interval">
+          <input id="interval" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="自動更新" aria-describedby="intervalval intervalout">
+          <span class="hint" id="intervalval"></span>
+        </div>
         <div class="fold" id="f-interval" hidden>
           <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
         </div>
-        <span class="hint" id="intervalout"></span>
+        <span class="hint warn" id="intervalout" hidden></span>
       </div>
       <div class="field">
         <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-quiet">自動更新を止める時間帯<span class="caret"></span></button>
@@ -2200,17 +2208,22 @@ function flushSettings() {
 document.addEventListener("visibilitychange", () => { if (document.hidden) flushSettings(); });
 window.addEventListener("pagehide", flushSettings);
 
-/* 式のままだと何秒か分からないので、結果をその場で添える */
+/* 式のままだと何秒か分からないので、結果をその場で添える。
+   出し先は2つ。値は入力欄の右隣（#intervalval）、注意は下に赤で（#intervalout）。
+   どの状態でどう言うかは今までどおりで、赤くしていたものが下に移っただけ */
 function showInterval() {
-  const el = $("intervalout");
   const raw = $("interval").value.trim();
-  el.classList.remove("warn");
-  if (!raw || raw === "0") { el.textContent = "自動更新なし"; return; }
+  const say = (value, note) => {
+    $("intervalval").textContent = value;
+    $("intervalout").textContent = note;
+    $("intervalout").hidden = !note;   // 空文字を入れると、その行の余白だけ残る
+  };
+  if (!raw || raw === "0") return say("自動更新なし", "");
   const sec = evalSeconds(raw);
-  if (sec === null) { el.textContent = "式として読めません"; el.classList.add("warn"); return; }
-  if (sec <= 0) { el.textContent = "= " + sec + "秒 — 自動更新なし"; return; }
-  if (sec < 15) { el.textContent = "= " + sec + "秒 — 15秒未満なので自動更新しません"; el.classList.add("warn"); return; }
-  el.textContent = "= " + sec + "秒（" + niceDuration(sec) + "）";
+  if (sec === null) return say("", "式として読めません");
+  if (sec <= 0) return say("= " + sec + "秒 — 自動更新なし", "");
+  if (sec < 15) return say("= " + sec + "秒", "15秒未満なので自動更新しません");
+  return say("= " + sec + "秒（" + niceDuration(sec) + "）", "");
 }
 
 $("save").onclick = async () => {
