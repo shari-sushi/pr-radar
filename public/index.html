@@ -281,6 +281,16 @@
   }
   .people .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   .repo-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  /* 自動更新する曜日。日と土だけ下地を敷いて、週末だとひと目で分かるようにする。
+     .repo は背景を「押されているか」の軸に使っているが、on/off は取り消し線と
+     枠・文字色でも表されている。曜日は7つ全部が押されているのが既定なので、
+     背景は週末の側に譲った方が情報が増える。
+     日は赤系・土は青系（日本のカレンダーの慣習）。無彩色の --panel と
+     見分けが付くよう、色味を薄く残す。
+     #dayfilter の中だけに効かせる —— .repo は #repofilter でも使っている。
+     id が入っているので .repo[aria-pressed="true"] の background より強い */
+  #dayfilter [data-day="0"] { background: color-mix(in srgb, var(--review) 12%, var(--panel)); }
+  #dayfilter [data-day="6"] { background: color-mix(in srgb, var(--draft) 12%, var(--panel)); }
   .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
   /* 入力欄と計算結果を1行に。入る値は 60 / 60*30 / 60*60*24 くらいなので、
      桁数に見合う幅で止めて、余りは結果の側に渡す */
@@ -2090,6 +2100,7 @@ function renderDays() {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "repo";
+    b.dataset.day = d;   // 週末の下地は CSS 側でこれを見る
     b.textContent = DAY_NAMES[d];
     b.setAttribute("aria-pressed", String(daysOn.has(d)));
     b.onclick = () => {
