@@ -284,6 +284,15 @@
   #dayfilter [data-day="0"] { background: color-mix(in srgb, var(--sun) 12%, var(--panel)); }
   #dayfilter [data-day="6"] { background: color-mix(in srgb, var(--sat) 12%, var(--panel)); }
   .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
+  /* 一覧に足す入口。トグルの並びの末尾に置くが、押されている / いない の
+     状態を持たないので、枠は付けず文字のまま出す */
+  .repo-toggles .jump {
+    flex: none; white-space: nowrap;
+    font-family: var(--sans); font-size: 11.5px; letter-spacing: 0;
+    text-transform: none; color: var(--faint);
+    background: none; border: 0; border-radius: 0; padding: 3px 2px; cursor: pointer;
+  }
+  .repo-toggles .jump:hover { color: var(--ink); background: none; border: 0; }
   /* 入力欄と計算結果を1行に。入る値は 60 / 60*30 / 60*60*24 くらいなので、
      桁数に見合う幅で止めて、余りは結果の側に渡す */
   .interval { display: flex; align-items: center; gap: 8px; }
@@ -740,14 +749,14 @@
         </div>
       </div>
       <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-mates">Author<span class="caret"></span></button>
+        <button class="sec" id="sec-mates" type="button" data-fold aria-expanded="false" aria-controls="f-mates">Author<span class="caret"></span></button>
         <div class="fold" id="f-mates" hidden>
           <textarea id="mates" rows="2" placeholder="octocat" spellcheck="false" aria-label="Author"></textarea>
           <span class="hint">自分以外で追う人の GitHub ID。複数はカンマか改行で区切る。ここに載せていない人の PR は「ほかの人のPR」に回る。打った時点で盤面に反映されるが、残すには「保存して更新」を押す。</span>
         </div>
       </div>
       <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repos">リポジトリ<span class="caret"></span></button>
+        <button class="sec" id="sec-repos" type="button" data-fold aria-expanded="false" aria-controls="f-repos">リポジトリ<span class="caret"></span></button>
         <div class="fold" id="f-repos" hidden>
           <textarea id="repos" rows="3" spellcheck="false" aria-label="リポジトリ"></textarea>
           <span class="hint">owner/repo を1行ずつ。打った時点で盤面に反映されるが、残すには「保存して更新」を押す。</span>
@@ -1789,6 +1798,9 @@ function paintPeople(box, isDrawer) {
   }
 
   for (const person of peopleList()) box.append(personToggle(person));
+
+  // 追う人を足すのは基本設定の Author 欄。盤面の上の帯には出さない
+  if (isDrawer) box.append(jumpBtn("＋ 追加する", "sec-mates", "mates"));
 }
 
 /* 設定の中と盤面の上で同じもの。押せる範囲が名前の幅ぶんある方がいいので、
@@ -1830,9 +1842,10 @@ function renderRepoFilter() {
     p.className = "none";
     p.textContent = "リポジトリを入れると、ここに並びます。";
     box.append(p);
-    return;
+  } else {
+    paintRepos(box, repos);
   }
-  paintRepos(box, repos);
+  box.append(jumpBtn("＋ 追加する", "sec-repos", "repos"));
 }
 
 /* 盤面に出すレーン。押した時点で view に書く */
@@ -2076,6 +2089,27 @@ function fold(btn, open) {
 document.querySelectorAll("[data-fold]").forEach((btn) => {
   btn.onclick = () => fold(btn, btn.getAttribute("aria-expanded") !== "true");
 });
+
+/* 使用設定のトグルは「並んでいるものを出す / 出さない」だけで、一覧そのものは
+   基本設定の欄で打つ。並びの末尾から、その欄まで連れて行くボタンを置く。
+   同じ引き出しの中の離れた場所なので、開いて終わりにせず、そこまでスクロールする */
+function jumpTo(secId, inputId) {
+  const sec = $(secId);
+  fold(sec, true);
+  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  sec.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "center" });
+  // スクロールはこちらで持っているので、フォーカスの副作用で飛ばさせない
+  $(inputId).focus({ preventScroll: true });
+}
+
+function jumpBtn(label, secId, inputId) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "jump";
+  b.textContent = label;
+  b.onclick = () => jumpTo(secId, inputId);
+  return b;
+}
 
 /* つながっていないときだけ赤くする。直し方はほぼ必ずトークン側にある。
    「?」は畳む側に入って見えないので、赤は見出しに出し、同時に開いて手が届く
