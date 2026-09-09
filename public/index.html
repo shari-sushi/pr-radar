@@ -184,22 +184,23 @@
   body.locked { overflow: hidden; }
 
   /* メモ。外側を押すと保存して閉じる */
-  .memo-scrim {
+  /* 中央に出す modal の器。メモと、行の歯車の操作で同じものを使う */
+  .memo-scrim, .ops-scrim {
     position: fixed; inset: 0; z-index: 20;
     background: rgba(30, 41, 51, .7);
     display: flex; align-items: center; justify-content: center;
     padding: 24px;
   }
-  .memo-scrim[hidden] { display: none; }
-  .memo {
+  .memo-scrim[hidden], .ops-scrim[hidden] { display: none; }
+  .memo, .ops {
     width: min(640px, 100%);
     background: var(--panel); border: 1px solid var(--line);
     display: grid; gap: 0; max-height: 100%;
   }
   /* 見出しはそのPRのカードそのもの。押せるのはタイトルのリンクだけ */
-  .memo-head { border-bottom: 1px solid var(--line); }
-  .memo-head .pr { padding: 12px 14px; }
-  .memo-head .pr .m { padding-right: 0; }
+  .memo-head, .ops-head { border-bottom: 1px solid var(--line); }
+  .memo-head .pr, .ops-head .pr { padding: 12px 14px; }
+  .memo-head .pr .m, .ops-head .pr .m { padding-right: 0; }
   /* カードのフッターの下。左端はカードの本文に揃える */
   .memo-head .wait-tag { margin: -2px 14px 12px; }
   .memo textarea {
@@ -208,6 +209,26 @@
     width: 100%; min-height: 220px; resize: vertical;
   }
   .memo textarea:focus { outline: none; }
+
+  /* 行の歯車で開く操作。押せるかどうかはその時の PR 次第なので、
+     灰色にするだけで済ませず、理由を必ず下の行に出す */
+  .ops-body { padding: 12px 14px 14px; display: grid; gap: 10px; }
+  .ops-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  /* コピーだけは性質が違う（PR を変えない）ので、間を空けて右へ寄せる */
+  .ops-row .ops-copy { margin-left: auto; }
+  .ops-btn[disabled], .ops-btn[disabled]:hover {
+    color: var(--faint); border-color: var(--line); background: none; cursor: default;
+  }
+  .ops-btn.done { color: var(--ready); border-color: var(--ready); }
+  .ops-btn.fail { color: var(--review); border-color: var(--review); }
+  .ops-note {
+    margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--dim);
+    white-space: pre-wrap;
+  }
+  .ops-note .ng { color: var(--review); }
+  .ops-note .yes { color: var(--ready); }
+  /* 走っている最中。二度押しを止めるのは disabled 側でやるので、ここは見た目だけ */
+  .ops.busy .ops-row { opacity: .55; }
 
   .drawer-head {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -462,6 +483,12 @@
   }
   /* 件数が増減しても幅が動かないように、数字は等幅の桁で出す */
   .lane-head .acts .docopy { font-variant-numeric: tabular-nums; }
+  /* 字のボタンに入る合図（コピーしました / できません）のアイコン。
+     SVG そのものは大きさを持たない作りなので、ここで決めないと
+     既定の 300×150 で開いてボタンが壊れる */
+  .lane-head .acts .docopy svg, .ops-btn svg {
+    width: 13px; height: 13px; vertical-align: -2px;
+  }
   .lane-head .acts .docopy.done { color: var(--c); border-color: var(--c); }
   .lane-head .acts .docopy.fail { color: var(--review); border-color: var(--review); }
   .lane-head .acts .docopy[disabled], .lane-head .acts .docopy[disabled]:hover {
@@ -567,6 +594,15 @@
   }
   .scope-tag svg { width: 15px; height: 15px; }
   .scope-tag:hover { color: var(--ink); background: #EDF1F2; border: 0; }
+  /* 目の右。見え方は目と揃える —— 同じ並びで役目だけが違う */
+  .ops-tag {
+    display: inline-flex; padding: 5px; line-height: 0;
+    border: 0; border-radius: 3px; background: transparent;
+    color: var(--faint); cursor: pointer;
+    transition: color .12s, background-color .12s;
+  }
+  .ops-tag svg { width: 15px; height: 15px; }
+  .ops-tag:hover { color: var(--ink); background: #EDF1F2; border: 0; }
   /* 左の色帯はリンクに従わせる。:has が無いブラウザでは帯が出ないだけ */
   .pr-row::before {
     content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
@@ -931,6 +967,16 @@
     </div>
   </div>
 
+  <div class="ops-scrim" id="opsscrim" hidden>
+    <div class="ops" id="ops" role="dialog" aria-modal="true" aria-label="この PR の操作">
+      <div class="ops-head" id="opshead"></div>
+      <div class="ops-body">
+        <div class="ops-row" id="opsrow"></div>
+        <p class="ops-note" id="opsnote"></p>
+      </div>
+    </div>
+  </div>
+
   <p class="kbd"><kbd>r</kbd> 更新 &nbsp; <kbd>s</kbd> 設定</p>
 </div>
 
@@ -959,6 +1005,7 @@ const ICON_FAIL = SVG + '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 const ICON_MEMO = SVG + '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>';
 /* 表示 / 伏せる のトグル */
 const ICON_EYE = SVG + '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_GEAR = SVG + '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_EYE_OFF = SVG + '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
 
 /* レビュー依頼の下書き。PR一覧はこの文末に足す */
@@ -1292,6 +1339,45 @@ async function gh(path, token) {
   }
   return res.json();
 }
+
+/* 書き込み。gh() は GET のままにして分けておく —— 1つの関数にまとめると、
+   読むつもりの呼び出しが引数ひとつで書き込みになる。
+   失敗したときは GitHub が返す message まで拾う。「HTTP 422」だけでは
+   何が引っかかったのか画面に出せない */
+async function ghSend(method, path, body) {
+  const res = await fetch("https://api.github.com" + path, {
+    method: method,
+    headers: {
+      Authorization: "Bearer " + cfg.token,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json"
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const remaining = res.headers.get("x-ratelimit-remaining");
+  if (remaining !== null) gh.remaining = remaining;
+  if (!res.ok) {
+    let detail = "";
+    try { const j = await res.json(); detail = j.message || ""; } catch (e) { detail = ""; }
+    const err = new Error("HTTP " + res.status + (detail ? " — " + detail : ""));
+    err.status = res.status;
+    throw err;
+  }
+  return res.status === 204 ? null : res.json().catch(() => null);
+}
+
+/* GraphQL の mutation。GraphQL は失敗しても HTTP 200 で返り、errors に入る。
+   ghGraphQL のままだと、失敗したのに成功として先へ進む */
+async function ghMutate(query, variables) {
+  const out = await ghGraphQL(query, variables);
+  if (out && out.errors && out.errors.length) throw new Error(out.errors[0].message);
+  return out ? out.data : null;
+}
+
+/* draft の出し入れは REST に口が無く、GraphQL のみ。PR の node_id が要る */
+const Q_TO_DRAFT = "mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}";
+const Q_TO_READY = "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}";
 
 /* REST の PR 一覧にはコメント数が入っていない（単体 GET にしか無い）。
    PR ごとに叩くと N+1 になるので、数だけは GraphQL で全リポジトリぶんを1リクエストにまとめる。 */
@@ -1856,6 +1942,11 @@ function renderLane(lane, prs, emptyMsg) {
     };
   });
 
+  el.querySelectorAll(".ops-tag").forEach((btn) => {
+    const pr = prs[Number(btn.dataset.i)];
+    btn.onclick = () => openOps(pr);
+  });
+
   el.querySelectorAll(".scope-tag").forEach((btn) => {
     const pr = prs[Number(btn.dataset.i)];
     btn.onclick = () => {
@@ -2080,6 +2171,10 @@ function prRow(pr, i, sel) {
         ' aria-label="' + (inScope ? "この PR を伏せる" : "伏せているのを戻す") + '"' +
         ' title="' + (inScope ? LABELS.IN + " — 押すと伏せる" : LABELS.OUT + " — 押すと戻す") + '">' +
         (inScope ? ICON_EYE : ICON_EYE_OFF) +
+      "</button>" +
+      '<button class="ops-tag" type="button" data-i="' + i + '"' +
+        ' aria-label="この PR の操作" title="draft の出し入れ / update branch / この1件をコピー">' +
+        ICON_GEAR +
       "</button>" +
     "</div>" +
   "</div>";
@@ -2348,6 +2443,188 @@ function closeMemo() {
 
 /* 外側だけで閉じる。カードのリンクや textarea を押しても閉じない */
 $("memoscrim").onclick = (e) => { if (e.target === $("memoscrim")) closeMemo(); };
+
+/* ---------- 行の歯車。1件ごとの操作 ---------- */
+/* draft の出し入れと update branch は、押せるかどうかがその時の PR 次第。
+   盤面のデータは前回の取得時点のもので、前回のキャッシュから出ていることもある。
+   だから開いたところで取り直す —— 古い状態のまま「できます」と出して、
+   押した先で 422 を返されるのがいちばんたちが悪い */
+let opsFor = null;     // 開いている PR（盤面の行が持っているもの）
+let opsState = null;   // 取り直した状態。取れるまでは null
+let opsMsg = "";       // 理由の行の末尾に出す一言（調べています / 結果 / 失敗）
+const opsOpen = () => !$("opsscrim").hidden;
+
+async function openOps(pr) {
+  opsFor = pr;
+  opsState = null;
+  opsMsg = "状態を調べています…";
+  // 見出しはメモと同じ流儀。そのPRのカードをそのまま置く
+  $("opshead").innerHTML = prCard(pr);
+  wireBranchCopy($("opshead"));
+  wireCounts($("opshead"));
+  $("opsscrim").hidden = false;
+  document.body.classList.add("locked");
+  paintOps();
+  await loadOps(pr);
+}
+
+function closeOps() {
+  if (!opsOpen()) return;
+  opsFor = null;
+  opsState = null;
+  opsMsg = "";
+  $("opsscrim").hidden = true;
+  $("ops").classList.remove("busy");
+  document.body.classList.remove("locked");
+}
+
+$("opsscrim").onclick = (e) => { if (e.target === $("opsscrim")) closeOps(); };
+
+/* いまの状態を取り直す。遅れの判定に mergeable_state は使わない ——
+   draft の PR では "draft" になり、遅れているかどうかが見えない。
+   compare の behind_by で直に数える。数が出るので理由の側にも書ける */
+async function loadOps(pr, keepMsg) {
+  const full = pr.base.repo.full_name;
+  try {
+    const d = await gh("/repos/" + full + "/pulls/" + pr.number);
+    let behind = null;
+    try {
+      const cmp = await gh("/repos/" + full + "/compare/" + baseHead(d));
+      behind = cmp.behind_by;
+    } catch (e) {
+      // 遅れだけ読めなかった。draft の出し入れは出せるので、ここでは止めない
+      behind = null;
+    }
+    // 待っているあいだに閉じられた / 別の行を開かれたら、もう塗らない
+    if (opsFor !== pr) return;
+    opsState = {
+      draft: !!d.draft, open: d.state === "open", merged: !!d.merged,
+      id: d.node_id, sha: d.head.sha, base: d.base.ref,
+      dirty: d.mergeable_state === "dirty", behind: behind
+    };
+    if (!keepMsg) opsMsg = "";
+    paintOps();
+  } catch (e) {
+    if (opsFor !== pr) return;
+    opsState = null;
+    opsMsg = e.status === 404
+      ? '<span class="ng">この PR が見つかりません。消されたか、権限が変わっています。</span>'
+      : '<span class="ng">状態を読めませんでした（' + esc(e.message) + "）。</span>";
+    paintOps();
+  }
+}
+
+/* compare に渡す `base...head`。ブランチ名に `/` が入るので ref は encode するが、
+   区切りの `...` と、フォークのときの `owner:` の `:` は生のまま置く。
+   まとめて encodeURIComponent に通すと区切りまで潰れて 404 になる。
+   同じリポジトリの PR ではブランチ名だけでよく、`owner:` を付けるのは
+   フォークから来た PR のときだけ */
+function baseHead(d) {
+  const enc = (ref) => encodeURIComponent(ref);
+  const headRepo = d.head.repo ? d.head.repo.full_name : "";
+  const sameRepo = headRepo && headRepo === d.base.repo.full_name;
+  const head = sameRepo || !d.head.repo
+    ? enc(d.head.ref)
+    : d.head.repo.owner.login + ":" + enc(d.head.ref);
+  return enc(d.base.ref) + "..." + head;
+}
+
+/* 押せない理由。灰色になっただけでは、なぜ押せないのかを言っていない */
+function opsNoteHtml() {
+  const s = opsState;
+  const lines = [];
+  if (s) {
+    if (!s.open) {
+      lines.push(s.merged
+        ? "merge 済みの PR。draft の出し入れも update branch もできません。"
+        : "閉じた PR。draft の出し入れも update branch もできません。");
+    } else {
+      lines.push(s.draft ? "いまは draft。" : "いまは draft ではない。");
+      if (s.dirty) {
+        lines.push('<span class="ng">コンフリクトがある。</span>update branch は base を取り込む操作なので、これでは解けません。');
+      } else if (s.behind === null) {
+        lines.push("base より遅れているかは読めませんでした。update branch は出しません。");
+      } else if (s.behind > 0) {
+        lines.push("base（" + esc(s.base) + "）より " + s.behind + " コミット遅れ。");
+      } else {
+        lines.push('<span class="yes">base に追いついている。</span>update branch は要りません。');
+      }
+    }
+  }
+  if (opsMsg) lines.push(opsMsg);
+  return lines.join("\n");
+}
+
+const opsNote = () => { $("opsnote").innerHTML = opsNoteHtml(); };
+
+function paintOps() {
+  const s = opsState;
+  const live = s && s.open;
+  const btn = (act, label, on, cls) =>
+    '<button class="ops-btn' + (cls ? " " + cls : "") + '" type="button" data-act="' + act + '"' +
+      (on ? "" : " disabled") + ">" + label + "</button>";
+
+  $("opsrow").innerHTML =
+    btn("ready", "draft 解除", !!(live && s.draft)) +
+    btn("draft", "draft 化", !!(live && !s.draft)) +
+    btn("update", "update branch", !!(live && !s.dirty && s.behind > 0)) +
+    // コピーは PR を変えない。状態が読めなくても押せる
+    btn("copy", "この1件をコピー", true, "ops-copy");
+
+  $("opsrow").querySelectorAll(".ops-btn").forEach((b) => {
+    b.onclick = () => runOps(b, b.dataset.act);
+  });
+  opsNote();
+}
+
+/* 出す言葉。動詞を足し算で作らない —— 「draft に」＋「ました」は
+   「draft にました」になる。活用は文字列の連結では作れないので、
+   3つの形をそのまま書く */
+const OPS_WORDS = {
+  ready:  { doing: "draft を解除しています…",  done: "draft を解除しました。",  ng: "draft を解除できませんでした" },
+  draft:  { doing: "draft にしています…",      done: "draft にしました。",      ng: "draft にできませんでした" },
+  update: { doing: "base を取り込んでいます…", done: "base を取り込みました。", ng: "base を取り込めませんでした" }
+};
+
+/* 実行。走っているあいだは全部押せなくする —— 二度押しで
+   同じ mutation が2回飛ぶと、2回目は「もう draft だ」で失敗になる */
+async function runOps(btn, act) {
+  const pr = opsFor;
+  if (!pr) return;
+
+  if (act === "copy") {
+    // 一覧と同じ書式。1件と複数を貼り混ぜても揃う
+    copyText(btn, btn.textContent, listText([pr]));
+    return;
+  }
+
+  const s = opsState;
+  if (!s) return;
+  const word = OPS_WORDS[act];
+  const full = pr.base.repo.full_name;
+
+  $("ops").classList.add("busy");
+  $("opsrow").querySelectorAll(".ops-btn").forEach((b) => { b.disabled = true; });
+  opsMsg = word.doing;
+  opsNote();
+
+  try {
+    if (act === "ready") await ghMutate(Q_TO_READY, { id: s.id });
+    else if (act === "draft") await ghMutate(Q_TO_DRAFT, { id: s.id });
+    else await ghSend("PUT", "/repos/" + full + "/pulls/" + pr.number + "/update-branch",
+      { expected_head_sha: s.sha });
+    opsMsg = '<span class="yes">' + word.done + "</span>";
+    // draft を切り替えるとレーンが変わる。盤面を出しっぱなしにはできない
+    refresh();
+    // 押せるものが変わる。取り直して塗り直す（結果の一言は残す）
+    await loadOps(pr, true);
+  } catch (e) {
+    opsMsg = '<span class="ng">' + word.ng + " — " + esc(e.message) + "</span>";
+    paintOps();
+  } finally {
+    $("ops").classList.remove("busy");
+  }
+}
 
 /* ヘッダーの目。伏せた PR を盤面に残すかどうかだけを切り替える */
 function paintBlind() {
@@ -2766,10 +3043,11 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   // Esc は入力欄の中からも効かせる
+  if (e.key === "Escape" && opsOpen()) { closeOps(); return; }
   if (e.key === "Escape" && memoOpen()) { closeMemo(); return; }
   if (e.key === "Escape" && settingsOpen()) { setSettings(false); return; }
   if (e.key === "Escape" && selLane) { closeSelect(); return; }
-  if (memoOpen()) return;   // メモを書いている間は r / s を拾わない
+  if (memoOpen() || opsOpen()) return;   // メモ・操作を開いている間は r / s を拾わない
   // 選んでいる間も拾わない。r は refresh で、選んだ途中が消える
   if (selLane) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
