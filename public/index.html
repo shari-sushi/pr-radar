@@ -10,6 +10,9 @@
     --dim:     #63747F;
     --faint:   #93A1AA;
     --line:    #D3D9DD;
+    /* --panel より1段だけ深い地色。押されているものに hover したときに使う。
+       --ink まで上げ切った文字色ではもう変化を出せないので、地色側で出す */
+    --panel-hi: #F3F6F7;
     --ready:   #0E7C6B;
     --draft:   #4C5F8F;
     --review:  #C8102E;
@@ -66,14 +69,6 @@
     font-family: var(--mono); font-size: 11.5px; color: var(--dim); letter-spacing: .04em;
     display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   }
-  /* リポジトリの表示トグル。押されているものだけ盤面に出す */
-  .repo {
-    text-transform: none; letter-spacing: .02em;
-    padding: 3px 8px; color: var(--faint); border-color: var(--line);
-  }
-  .repo[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
-  .repo[aria-pressed="false"] { text-decoration: line-through; text-decoration-color: var(--line); }
-  .repo:hover { color: var(--ink); }
   /* 状態の軸だけをタブにする。誰のPRかはレーンが持っているので混ぜない。
      ひと続きの枠を2つに割った切り替えスイッチにする。絞り込みのトグル
      （箱・錠剤・角丸）はどれも「押されている枠」なので、塗りつぶしで
@@ -89,7 +84,7 @@
     background: var(--panel); color: var(--faint);
   }
   .tab + .tab { border-left: 1px solid var(--line); }
-  .tab:hover { color: var(--ink); background: #F3F6F7; border-color: var(--line); }
+  .tab:hover { color: var(--ink); background: var(--panel-hi); border-color: var(--line); }
   .tab[aria-selected="true"],
   .tab[aria-selected="true"]:hover { background: var(--dim); color: var(--panel); }
   .top .spacer { flex: 1 1 auto; }
@@ -104,10 +99,23 @@
   #refresh svg, #blind svg { width: 15px; height: 15px; }
   #blind[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); }
   /* 「待ち」の絞り込み。押されているあいだは印の付いた PR を盤面から外す */
-  #waitfilter { text-transform: none; letter-spacing: .04em; padding: 5px 9px; }
-  #waitfilter[aria-pressed="true"] {
+  /* closed / merged の絞り込みも同じ作り。closed タブのあいだだけ出る。
+     押されている＝その種類を盤面から外している、で「待ち」と揃える */
+  #waitfilter, #closedfilter, #mergedfilter {
+    text-transform: none; letter-spacing: .04em; padding: 5px 9px;
+  }
+  #waitfilter[aria-pressed="true"],
+  #closedfilter[aria-pressed="true"],
+  #mergedfilter[aria-pressed="true"] {
     color: var(--ink); border-color: var(--dim); background: var(--panel);
     text-decoration: line-through; text-decoration-color: var(--line);
+  }
+  #closedfilter[hidden], #mergedfilter[hidden] { display: none; }
+  /* 「待ち」は open の PR にだけ効く。closed タブでは消さずに押せなくする ——
+     消すと隣のボタンの位置が動いて、タブを行き来するたび押し間違える */
+  #waitfilter[disabled], #waitfilter[disabled]:hover {
+    color: var(--faint); border-color: var(--line); background: none;
+    text-decoration: none; cursor: default;
   }
 
   button {
@@ -119,6 +127,25 @@
   }
   button:hover { color: var(--ink); border-color: var(--dim); background: var(--panel); }
   :focus-visible { outline: 2px solid var(--review); outline-offset: 2px; }
+
+  /* ---------- トグル ---------- */
+  /* 押されている / いない の2状態を持つチップの共通部分。repo・who・lane・曜日が
+     これを使う。色はここが1か所で持つ —— 以前は3か所に同じ意味の色が
+     別々に書いてあり、「押されている」がどの色なのか場所ごとに読み替えが要った。
+     形（角の丸み・padding）と字（font・大きさ）は使う側が上書きしてよい。
+     何も上書きしなければ、この既定の形（角ばった小さい箱）で出る。
+     4つの状態を全部書き出す。hover を1本にまとめると、true のときは
+     文字色がすでに --ink で変化が出ず、押せることが分からない */
+  .tgl {
+    flex: none; white-space: nowrap;
+    text-transform: none; letter-spacing: .02em;
+    padding: 3px 8px; border-radius: 2px;
+    color: var(--faint); background: none; border: 1px solid var(--line);
+  }
+  .tgl[aria-pressed="true"]        { color: var(--ink);   border-color: var(--dim);  background: var(--panel); }
+  .tgl[aria-pressed="false"]       { color: var(--faint); border-color: var(--line); background: none; }
+  .tgl[aria-pressed="true"]:hover  { color: var(--ink);   border-color: var(--dim);  background: var(--panel-hi); }
+  .tgl[aria-pressed="false"]:hover { color: var(--ink);   border-color: var(--dim);  background: none; }
 
   /* ---------- hamburger ---------- */
   .burger {
@@ -274,13 +301,14 @@
 
   .repo-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
   /* 自動更新する曜日。日と土だけ下地を敷いて、週末だとひと目で分かるようにする。
-     .repo は背景を「押されているか」の軸に使っているが、on/off は取り消し線と
+     .tgl は背景を「押されているか」の軸に使っているが、on/off は取り消し線と
      枠・文字色でも表されている。曜日は7つ全部が押されているのが既定なので、
      背景は週末の側に譲った方が情報が増える。
      日は赤系・土は水色系（日本のカレンダーの慣習）。無彩色の --panel と
      見分けが付くよう、色味を薄く残す。混ぜる割合は両方 12% で揃えている。
      #dayfilter の中だけに効かせる —— .repo は #repofilter でも使っている。
-     id が入っているので .repo[aria-pressed="true"] の background より強い */
+     id が入っているので .tgl[aria-pressed="true"] の background より強い。
+     hover の地色（--panel-hi）にも勝つので、週末だけ hover で地色が動かない */
   #dayfilter [data-day="0"] { background: color-mix(in srgb, var(--sun) 12%, var(--panel)); }
   #dayfilter [data-day="6"] { background: color-mix(in srgb, var(--sat) 12%, var(--panel)); }
   .repo-toggles .none { margin: 0; font-size: 11.5px; color: var(--faint); }
@@ -334,6 +362,18 @@
      長い注意書きと1行につながって読めないよう、自分の行を持たせる */
   .settings .actions #savenote { flex: 1 0 100%; }
   .settings .actions #savenote[hidden] { display: none; }
+  /* 引き出しのいちばん下。設定ではないので、かたまりの外に置く */
+  .drawer-foot {
+    display: flex; justify-content: center;
+    margin: 0; padding-top: 16px; border-top: 1px solid var(--line);
+  }
+  .drawer-foot a {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--faint); text-decoration: none;
+  }
+  .drawer-foot a:hover { color: var(--ink); }
+  .drawer-foot svg { width: 15px; height: 15px; flex: none; }
 
   .test-out {
     grid-column: 1 / -1;
@@ -342,6 +382,13 @@
     display: grid; gap: 3px;
   }
   .test-out[hidden] { display: none; }
+  /* 出る行数は押した時点で分かる（認証1行 ＋ Author の数 ＋ リポジトリの数）。
+     その分の高さを先に取っておき、1行ずつ届くたびに引き出しが伸びるのを止める。
+     --rows は押したときに JS が入れる。border-box なので padding と枠のぶんを足す */
+  .test-out[style*="--rows"] {
+    min-height: calc(var(--rows) * 1.65em + (var(--rows) - 1) * 3px + 13px);
+    align-content: start;
+  }
   .test-out > div { display: flex; gap: 9px; align-items: baseline; }
   .test-out .mark { flex: none; width: 1em; font-weight: 700; }
   .test-out .ok   { color: var(--ready); }
@@ -398,6 +445,56 @@
   .lane-head .copy:hover { color: var(--c); background: #F1F4F5; border: 0; }
   .lane-head .copy.done { color: var(--c); }
   .lane-head .copy.fail { color: var(--review); }
+
+  /* ---------- 選択してコピー ---------- */
+  /* コピーを押したときだけ出る一時的なモード。ふだんは行に何も足さない ——
+     行には既に「待ち」のチェックボックスがあり、コピー用のものを常設すると
+     同じ見た目のチェックボックスが1行に2つ並んで、意味の違いが見た目に出ない */
+  .lane-head .acts .pickall {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--line); border-radius: 2px; padding: 4px 8px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em;
+    color: var(--dim); cursor: pointer; white-space: nowrap; user-select: none;
+  }
+  .lane-head .acts .pickall:hover { color: var(--ink); border-color: var(--dim); }
+  .lane-head .acts .pickall input {
+    width: auto; margin: 0; padding: 0; border: 0; flex: none; accent-color: var(--c);
+  }
+  /* 件数が増減しても幅が動かないように、数字は等幅の桁で出す */
+  .lane-head .acts .docopy { font-variant-numeric: tabular-nums; }
+  .lane-head .acts .docopy.done { color: var(--c); border-color: var(--c); }
+  .lane-head .acts .docopy.fail { color: var(--review); border-color: var(--review); }
+  .lane-head .acts .docopy[disabled], .lane-head .acts .docopy[disabled]:hover {
+    color: var(--faint); border-color: var(--line); background: none; cursor: default;
+  }
+  /* やめる。.copy と同じ見え方にする（枠なしのアイコン） */
+  .lane-head .acts .xbtn {
+    display: inline-flex; padding: 5px; line-height: 0;
+    border: 0; border-radius: 3px; color: var(--faint);
+    transition: color .12s, background-color .12s;
+  }
+  .lane-head .acts .xbtn svg { width: 15px; height: 15px; }
+  .lane-head .acts .xbtn:hover { color: var(--ink); background: #F1F4F5; border: 0; }
+
+  /* 選択中の行は「選ぶための的」なので、ふだんの操作は止める。
+     生かしておくと、待ちを押すつもりが選択になる（逆も起きる） */
+  .lane.sel .pr .t, .lane.sel .pr .branch,
+  .lane.sel .pr-actions, .lane.sel .cnt { pointer-events: none; }
+  .lane.sel .pr-row { cursor: pointer; }
+  /* チェックボックスは position で浮かせ、本文をそのぶん右へ寄せる。
+     こうすると通常表示の組み方（.pr の grid）に触らずに済む */
+  .lane.sel .pr { padding-left: 36px; }
+  .pick { position: absolute; left: 13px; top: 12px; display: inline-flex; }
+  /* 押す相手は行そのもの。チェックボックスは印であって的ではない ——
+     的にすると、行とチェックボックスで2回トグルされて状態が合わなくなる */
+  .pick input {
+    width: auto; margin: 0; padding: 0; border: 0; flex: none;
+    accent-color: var(--c); pointer-events: none;
+  }
+  /* 選んだ行。opacity は「自分の手を離れているか」の軸に使っているので、
+     ここでは地色と左罫で出す。罫は hover の色帯（::before）と重ならないよう inset で */
+  .lane.sel .pr-row.picked { background: var(--panel-hi); box-shadow: inset 3px 0 0 var(--c); }
+  .lane.sel .pr-row.picked:hover { background: #EDF1F2; }
 
   /* 行は器。リンクはタイトルだけ、チェックボックスは右下に浮かせる。
      カード全体をリンクにすると、チェックボックスを押しても PR が開いてしまう */
@@ -481,16 +578,28 @@
     color: inherit; text-decoration: none; justify-self: start;
   }
   .pr .t:hover, .pr .t:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
-  /* タイトルの下。右端は #番号 に揃える。押すとブランチ名をコピーする */
-  .pr .branch {
-    grid-column: 1 / -1; justify-self: end; max-width: 100%;
+  /* タイトルの下。左端はタイトルに揃える。このPR → merge先 の順で2本並ぶ。
+     幅に収まらないときだけ折り返し、折り返しても左端に寄せたままにする */
+  .pr .branches {
+    grid-column: 1 / -1; justify-self: start; max-width: 100%; min-width: 0;
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    justify-content: flex-start; gap: 0 4px; margin-top: 1px;
+  }
+  /* 矢印は向き（左から右へ入る）を示すだけの区切り。押せないので下線も出ない */
+  .pr .branches .bw {
     font-family: var(--mono); font-size: 10.5px; letter-spacing: 0;
-    text-transform: none; text-align: right; overflow-wrap: anywhere;
-    color: var(--faint); background: none; border: 0; border-radius: 0;
-    padding: 0; margin-top: 1px; cursor: pointer;
+    color: var(--faint);
+  }
+  /* 名前だけ矢印より濃くする。読むのは名前で、区切りは向きを示すだけ */
+  .pr .branch {
+    max-width: 100%;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0;
+    text-transform: none; text-align: left; overflow-wrap: anywhere;
+    color: var(--dim); background: none; border: 0; border-radius: 0;
+    padding: 0; margin: 0; cursor: pointer;
   }
   .pr .branch:hover {
-    color: var(--dim); background: none; border: 0;
+    color: var(--ink); background: none; border: 0;
     text-decoration: underline; text-underline-offset: 2px;
   }
   .pr .branch.done, .pr .branch.done:hover { color: var(--ready); text-decoration: none; }
@@ -509,6 +618,24 @@
     padding-right: 122px;
   }
   .pr .m .sep { color: var(--line); }
+  /* 作成日時・最終更新の吹き出し。title 属性だと出るまで1秒近く待たされ、
+     待ち時間もブラウザ任せなので、メモと同じやり方で自前に持つ。
+     こちらは短い1行を「見た瞬間に読む」ものなので、遅延は 0.1 秒に固定して
+     設定（--memo-delay）とは連動させない */
+  .pr .m .when { position: relative; }
+  .pr .m .when[data-when]::after {
+    content: attr(data-when);
+    position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5;
+    width: max-content; max-width: 320px;
+    white-space: pre-wrap; text-align: left;
+    font-family: var(--mono); font-size: 12px; line-height: 1.5; letter-spacing: 0;
+    color: var(--panel); background: rgba(14, 26, 34, .93);
+    border-radius: 3px; padding: 5px 8px;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .12s, visibility .12s; transition-delay: 0s;
+  }
+  /* 遅延は出るときだけ。離したら待たずに消える */
+  .pr .m .when[data-when]:hover::after { opacity: 1; visibility: visible; transition-delay: .1s; }
   /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
   .pr .m .cnt {
     display: inline-flex; gap: 8px; font-variant-numeric: tabular-nums;
@@ -532,7 +659,7 @@
   /* 差があるときだけ押せる。地色は敷かない。+n が同じことを言っており、
      二重に出すと +n を目立たせるために塗るはめになる */
   .pr .m .cnt.new { cursor: pointer; }
-  .pr .m .cnt.new:hover { background: #F3F6F7; }
+  .pr .m .cnt.new:hover { background: var(--panel-hi); }
   .chip {
     font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
     padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.5;
@@ -556,19 +683,28 @@
 
   .empty { padding: 16px 14px; font-size: 12.5px; color: var(--faint); }
 
-  /* 絞り込み専用の帯。タブは見出しの行にある */
+  /* 絞り込みの帯。タブと repo は見出しの行にある。
+     who と lane は1行ずつに分ける。数が増えて伸びるのは who の側だけなので、
+     同じ行に置くと lane が右へ押し出されて位置が定まらない */
   .bar {
-    display: flex; align-items: flex-end;
-    margin: -10px 0 16px; border-bottom: 1px solid var(--line);
-    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+    margin: -10px 0 16px; padding-bottom: 7px;
+    border-bottom: 1px solid var(--line);
   }
-  /* 絞り込みはヘッダーから降ろしてここへ。ヘッダーには識別と全体操作だけ残す */
+  /* 横スクロールは帯ごとではなく行ごとに持たせる。
+     人数がはみ出た行だけが流れ、lane の行は動かない */
   .filters {
-    display: flex; align-items: center; gap: 18px;
-    flex: none; padding-bottom: 7px;
+    display: flex; align-items: center; gap: 18px; flex: none;
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
   }
   .fgroup { display: flex; align-items: center; gap: 7px; flex: none; }
   .fgroup[hidden] { display: none; }
+  /* 追う人が1人もいない（トークンを入れる前）ときに、
+     ラベルだけの行が残らないようにする */
+  .filters .fgroup:has(.people-bar:empty) { display: none; }
+  /* repo は見出しの行に置く。ほかの項目は baseline で揃えているが、
+     チップは箱なので中央で揃える。数が増えたら見出しの中で折り返す */
+  .top > .fgroup { align-self: center; min-width: 0; }
   /* 「待ち」と目のボタンの高さを揃える。目の方は中がアイコンだけで
      テキストの行高を持たないので低くなる。--btn-h を当てると
      「待ち」（等幅の行高 ＋ padding ＋ 枠）と 1〜2px ずれるため、
@@ -580,27 +716,19 @@
     text-transform: uppercase; color: var(--faint);
   }
   .people-bar { display: flex; align-items: center; gap: 7px; }
+  /* ここから下は .tgl に形と off の見せ方だけを足すぶん。3つ並べて置く ——
+     どれも同じ色で出るので、違いは形だけであることが読んで分かるように */
+  /* リポジトリの表示トグル。押されているものだけ盤面に出す。形は .tgl の既定
+     （角ばった箱）のまま。設定の「自動更新する曜日」もこれを使う */
+  .repo[aria-pressed="false"] { text-decoration: line-through; text-decoration-color: var(--line); }
   /* レーンのトグル。repo（角ばった箱）とも who（丸い錠剤）とも違う第3の形 */
-  .lane-tag {
-    flex: none; white-space: nowrap;
-    text-transform: none; letter-spacing: .02em;
-    padding: 3px 9px; border-radius: 4px;
-    color: var(--faint); border-color: var(--line);
-  }
-  .lane-tag[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  .lane-tag { padding: 3px 9px; border-radius: 4px; }
   .lane-tag[aria-pressed="false"] { opacity: .5; }
-  .lane-tag:hover { color: var(--ink); border-color: var(--dim); }
-  /* リポジトリのトグル（.repo）とは別物なので、形で見分けられるようにする。
-     あちらは角ばった箱に取り消し線、こちらは丸い錠剤に破線 */
-  .who {
-    flex: none; white-space: nowrap;
-    text-transform: none; letter-spacing: .02em;
-    padding: 3px 11px; border-radius: 999px;
-    color: var(--faint); border-color: var(--line);
-  }
-  .who[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel); }
+  /* 追う人のトグル。リポジトリのトグル（.repo）とは別物なので、形で
+     見分けられるようにする。あちらは角ばった箱に取り消し線、
+     こちらは丸い錠剤に破線。色は .tgl と共通 */
+  .who { padding: 3px 11px; border-radius: 999px; }
   .who[aria-pressed="false"] { border-style: dashed; opacity: .6; }
-  .who:hover { color: var(--ink); border-color: var(--dim); }
   /* 自分の印。名前と同じボタンの中に入るので、字を落として間を空ける。
      人数が増えると「先頭が自分」では分からなくなるので、位置に頼らない */
   .who .self { margin-left: 6px; font-size: 10px; letter-spacing: .08em; color: var(--faint); }
@@ -627,6 +755,7 @@
       <button class="tab" id="tab-open" type="button" role="tab" aria-selected="true">open</button>
       <button class="tab" id="tab-closed" type="button" role="tab" aria-selected="false">closed</button>
     </div>
+    <span class="fgroup"><span class="flabel">repo</span><span class="scope" id="scope"></span></span>
     <span class="spacer"></span>
     <span class="status" id="status">読み込み待ち</span>
     <button id="refresh" aria-label="更新" title="更新">
@@ -639,12 +768,15 @@
 
   <div class="bar">
     <div class="filters">
-      <span class="fgroup"><span class="flabel">repo</span><span class="scope" id="scope"></span></span>
       <span class="fgroup"><span class="flabel">who</span><span class="people-bar" id="peoplebar"></span></span>
+    </div>
+    <div class="filters">
       <span class="fgroup" id="lanegroup"><span class="flabel">lane</span><span class="scope" id="lanefilter"></span></span>
       <span class="fgroup" id="waitgroup">
         <button id="waitfilter" type="button" aria-pressed="false">待ち</button>
         <button id="blind" type="button" aria-pressed="false"></button>
+        <button id="closedfilter" type="button" aria-pressed="false" hidden>closed</button>
+        <button id="mergedfilter" type="button" aria-pressed="false" hidden>merged</button>
       </span>
     </div>
   </div>
@@ -771,6 +903,12 @@
       </div>
       <div class="test-out" id="testout" hidden></div>
     </section>
+
+    <p class="drawer-foot">
+      <a href="https://github.com/shari-sushi/pr-radar" target="_blank" rel="noopener">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub
+      </a>
+    </p>
   </aside>
 
   <div class="board" id="board">
@@ -782,6 +920,7 @@
     <div class="col">
       <section class="lane" id="lane-review" style="--c:var(--review)"></section>
       <section class="lane" id="lane-other" style="--c:var(--other)"></section>
+      <section class="lane" id="lane-closed-other" style="--c:var(--other)"></section>
     </div>
   </div>
 
@@ -841,11 +980,15 @@ const LANES = [
   // 書式はどのレーンでも同じなので、最初に目に入る1か所にだけ置く
   { id: "ready",  rail: "待ち",   title: "Ready for Review",
     sub: "author | created_at - last-updated | comment-count, review-count, inline-comment-count",
-    legend: true, copy: true },
-  { id: "draft",  rail: "下書",   title: "Draft" },
+    legend: true, copy: true, post: true },
+  // 下書きも一覧のコピーは持つ。レビュー依頼の文面（post）は出す前の PR には要らないので付けない
+  { id: "draft",  rail: "下書",   title: "Draft", copy: true },
   { id: "review", rail: "依頼",   title: "Review Requested" },
   { id: "other",  rail: "他",     title: "Other Authors" },
-  { id: "closed", rail: "閉",     title: "Closed", tab: "closed", paged: true }
+  // closed も「誰の PR か」で2本に分ける。もっと見るは取得を1ページ進めるもので、
+  // 増えるのは両方のレーンなので、どちらの末尾にも置く
+  { id: "closed",       rail: "閉",   title: "Closed",        tab: "closed", paged: true },
+  { id: "closed-other", rail: "他",   title: "Other Authors", tab: "closed", paged: true }
 ];
 /* tab を書いていないものは open。既定のタブに寄せておく */
 for (const l of LANES) if (!l.tab) l.tab = "open";
@@ -1115,10 +1258,12 @@ const mmdd = (iso) => {
   return String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0");
 };
 
+/* ホバーで出す形は yymmdd_hh:mm。年は下2桁だけ、日付と時刻は _ で切る */
 const fullStamp = (iso) => {
   const d = new Date(iso);
-  return d.getFullYear() + "/" + mmdd(iso) + " " +
-    String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  const p2 = (n) => String(n).padStart(2, "0");
+  return p2(d.getFullYear() % 100) + p2(d.getMonth() + 1) + p2(d.getDate()) +
+    "_" + p2(d.getHours()) + ":" + p2(d.getMinutes());
 };
 
 const daysOld = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -1220,7 +1365,7 @@ function slim(pr) {
     number: pr.number, title: pr.title, html_url: pr.html_url, draft: !!pr.draft,
     created_at: pr.created_at, updated_at: pr.updated_at,
     user: { login: pr.user ? pr.user.login : "" },
-    base: { repo: { name: pr.base.repo.name, full_name: pr.base.repo.full_name } },
+    base: { ref: pr.base.ref || "", repo: { name: pr.base.repo.name, full_name: pr.base.repo.full_name } },
     head: { ref: pr.head ? pr.head.ref : "" },
     labels: (pr.labels || []).slice(0, 2).map((l) => ({ name: l.name })),
     requested_reviewers: (pr.requested_reviewers || []).map((u) => ({ login: u.login })),
@@ -1288,6 +1433,10 @@ let fetched = null;    // [{ repo, pr }] | null
 let shownRepos = [];   // いまトグルとして並べている owner/repo
 let showOut = true;      // 伏せた PR を盤面に残すか。ヘッダーの目のボタンで切り替える
 let showWaiting = true;  // 「待ち」の印が付いた PR を盤面に残すか
+/* closed タブの2つ。merged で閉じたもの / merge されずに閉じたもの を
+   それぞれ盤面に残すか。closed タブ以外では見ないので、ボタンごと隠す */
+let showMerged = true;
+let showUnmerged = true;
 /* メモの吹き出しが出るまでの既定。DELAY_STEPS に実在する値であること
    （目盛りに無い値を置くと、つまみの位置と横の数字が食い違う）。
    保存が無いとき・保存が読めないときの落とし所が3か所あるので、
@@ -1340,6 +1489,8 @@ function loadView() {
   // 知らない値や空なら、どちらも「出す」側に倒す
   showOut = view.showOut !== false;
   showWaiting = view.showWaiting !== false;
+  showMerged = view.showMerged !== false;
+  showUnmerged = view.showUnmerged !== false;
   laneOff = new Set(strings(view.laneOff));
   activeTab = view.tab === "closed" ? "closed" : "open";   // 知らない値は open に倒す
   memoDelay = snapDelay(view.memoDelay);
@@ -1354,7 +1505,7 @@ function loadView() {
 
 function saveView() {
   writeJson(VIEW_KEY, {
-    showOut, showWaiting, memoDelay,
+    showOut, showWaiting, showMerged, showUnmerged, memoDelay,
     off: [...peopleOff], hidden: [...hiddenRepos], laneOff: [...laneOff], tab: activeTab
   });
 }
@@ -1369,24 +1520,40 @@ function syncRepos() {
   renderBoard();
 }
 
+/* 押されている / いない を持つチップを1つ作る。repo・who・lane・曜日で共通。
+   色は CSS の .tgl が1か所で持ち、形と字は kind のクラスが足す。
+   kind を渡さなければ .tgl の既定の形（角ばった小さい箱）で出る。
+   on は「いま押されているか」、toggle は押したあとの値を受け取る。
+   中に何か足したいときは（who の「自分」の印など）返ったものに append する */
+function toggleBtn({ label, kind, title, on, toggle, data }) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = kind ? "tgl " + kind : "tgl";
+  b.textContent = label;
+  if (title) b.title = title;
+  if (data) for (const k in data) b.dataset[k] = data[k];
+  b.setAttribute("aria-pressed", String(on));
+  b.onclick = () => toggle(b.getAttribute("aria-pressed") !== "true");
+  return b;
+}
+
 /* リポジトリ名のトグル。人と同じで、設定の中と盤面の上の2か所に同じものが出る。
    見ているのは hiddenRepos ひとつなので、描くところも1つにする。
    並べる元だけが違う —— 帯は取ってきたリポジトリ、設定は打ってあるリポジトリ */
 function paintRepos(box, repos) {
   box.textContent = "";
   for (const repo of repos) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "repo";
-    b.textContent = repo.split("/")[1] || repo;
-    b.title = repo;
-    b.setAttribute("aria-pressed", String(!hiddenRepos.has(repo)));
-    b.onclick = () => {
-      if (hiddenRepos.has(repo)) hiddenRepos.delete(repo);
-      else hiddenRepos.add(repo);
-      syncRepos();
-    };
-    box.append(b);
+    box.append(toggleBtn({
+      label: repo.split("/")[1] || repo,
+      kind: "repo",
+      title: repo,
+      on: !hiddenRepos.has(repo),
+      toggle: (on) => {
+        if (on) hiddenRepos.delete(repo);
+        else hiddenRepos.add(repo);
+        syncRepos();
+      }
+    }));
   }
 }
 
@@ -1400,6 +1567,16 @@ function renderScope() {
 }
 
 /* PR をどのレーンに置くか。null なら盤面に出さない */
+/* closed は「誰の PR か」だけで分ける。レビュー依頼は閉じた時点で意味が無いので見ない。
+   一覧に居てチェックを外した人を落とすのは open と同じ ——
+   「この人はいま見ない」という意思表示は、閉じたものにも同じように効く */
+function closedLaneOf(pr, listed, ours) {
+  const author = (pr.user && pr.user.login || "").toLowerCase();
+  if (ours.has(author)) return "closed";
+  if (listed.has(author)) return null;
+  return "closed-other";
+}
+
 function laneOf(pr, me, listed, ours) {
   const author = (pr.user && pr.user.login || "").toLowerCase();
   const reviewers = (pr.requested_reviewers || []).map((u) => u.login.toLowerCase());
@@ -1420,7 +1597,7 @@ function renderBoard() {
   const listed = new Set(peopleList().map((p) => p.key));               // Author 欄に並んでいる人
   const ours = new Set([...listed].filter((k) => !peopleOff.has(k)));   // うちチェックが入っている人
 
-  const buckets = { ready: [], draft: [], review: [], other: [], closed: [] };
+  const buckets = { ready: [], draft: [], review: [], other: [], closed: [], "closed-other": [] };
   for (const item of fetched || []) {
     if (hiddenRepos.has(item.repo)) continue;
     if (!showOut && labelOf(item.pr) === LABELS.OUT) continue;
@@ -1430,12 +1607,17 @@ function renderBoard() {
     buckets[lane].push(item.pr);
   }
 
-  // closed は author の振り分けにも「待ち」の絞り込みにも関係しない。
-  // 済んだものを待つことはないし、隠すと探せなくなるだけ
+  // closed も author で分ける。規則は open と揃える —— WHO のトグルが
+  // タブをまたいで同じ意味で効いた方が、押したときの結果を読み違えない。
+  // 「待ち」の絞り込みだけは掛けない（済んだものを待つことはない）
   for (const item of fetchedClosed || []) {
     if (hiddenRepos.has(item.repo)) continue;
     if (!showOut && labelOf(item.pr) === LABELS.OUT) continue;
-    buckets.closed.push(item.pr);
+    if (!showMerged && item.pr.merged_at) continue;
+    if (!showUnmerged && !item.pr.merged_at) continue;
+    const lane = closedLaneOf(item.pr, listed, ours);
+    if (!lane) continue;
+    buckets[lane].push(item.pr);
   }
   for (const k in buckets) buckets[k].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
@@ -1534,14 +1716,106 @@ function syncLanes() {
   $("board").classList.toggle("one", cols.filter((c) => !c.hidden).length === 1);
 }
 
+/* ---------- 選択してコピー ---------- */
+/* コピーを押したときだけ開く一時的なモード。1タスクが 1〜3 リポにまたがるので、
+   欲しいのは一覧の全部ではなく数件。だから全部から引くのではなく、0件から積む。
+   保存はしない —— 閉じたら捨てる。次に開いたときは必ず0件から始まる */
+let selLane = null;        // 開いているレーンの id。null ならどのレーンも通常表示
+let selKind = "list";      // list / post のどちらのボタンから入ったか
+let selKeys = new Set();   // 選んだ PR。prKey で持つ（index は絞り込みでずれる）
+/* 選択中に来た自動更新をここで待たせる。何回来ても走らせるのは1回 */
+let refreshPending = false;
+/* 「コピーしました」を出しておく時間。flash と、閉じるまでの待ちの両方で使う。
+   別々に持つと片方だけ直したときに合図が途中で切れる */
+const FLASH_MS = 1400;
+
+function openSelect(laneId, kind) {
+  selLane = laneId;
+  selKind = kind;
+  selKeys.clear();
+  renderBoard();
+}
+
+/* 閉じる。待たせていた自動更新があれば、ここで1回だけ走らせる。
+   スキップ（捨てる）にはしない —— 閉じたときに走らせれば、見に戻った瞬間が
+   いちばん新しい。モードが「穴」ではなく「一時停止」になる */
+function closeSelect() {
+  if (!selLane) return;
+  const pending = refreshPending;
+  dropSelect();
+  renderBoard();
+  if (pending) refresh();
+}
+
+/* レーンの出し入れやタブの移動で、選んでいたレーンが盤面から消えるなら
+   選ぶのをやめる。ここで閉じないと、見えないところに選択モードの見出しが
+   残り、戻したときに「全選択 / コピー 0件」の並びだけが出てくる。
+   関係ないレーンを畳んだときは巻き込まない —— 選んでいる途中を消さない */
+function closeSelectIfHidden() {
+  if (!selLane) return;
+  const lane = LANES.find((l) => l.id === selLane);
+  if (lane && lane.tab === activeTab && !laneOff.has(lane.id)) return;
+  closeSelect();
+}
+
+/* 状態だけ落とす。描き直しの途中（renderLane）からも呼ぶので、
+   ここから renderBoard は呼べない。待たせていた更新も捨てる ——
+   拾い直さなくても、次の tick で普通に走る */
+function dropSelect() {
+  selLane = null;
+  selKeys.clear();
+  refreshPending = false;
+}
+
+/* 通常のコピーボタン。押すと選択モードに入る */
+function copyActsHtml(lane) {
+  return '<button class="copy" type="button" data-kind="list" aria-label="この一覧から選んでコピー" title="この一覧から選んでコピー">' + ICON_COPY + "</button>" +
+    (lane.post
+      ? '<button class="copy" type="button" data-kind="post" aria-label="レビュー依頼の文面ごと、選んでコピー" title="レビュー依頼の文面ごと、選んでコピー">' + ICON_DOC + "</button>"
+      : "");
+}
+
+/* 選択中の見出し。全選択/全解除・確定・やめる の3つ。
+   全選択と全解除は1つのトグルにする —— ボタンを2つ並べるより、
+   選択0なら「全選択」、1件以上なら「全解除」の1つで両方できる */
+function selActsHtml() {
+  const n = selKeys.size;
+  const all = n > 0;
+  return '<label class="pickall" title="' + (all ? "選択をすべて外す" : "出ている分をすべて選ぶ") + '">' +
+      '<input type="checkbox" class="allbox"' + (all ? " checked" : "") + ">" +
+      "<span>" + (all ? "全解除" : "全選択") + "</span>" +
+    "</label>" +
+    '<button class="docopy" type="button"' + (n ? "" : " disabled") + '>コピー ' + n + "件</button>" +
+    '<button class="xbtn" type="button" aria-label="選ぶのをやめる" title="やめる">' + ICON_FAIL + "</button>";
+}
+
+/* 見出しの数とトグルの字だけ塗り替える。行は触らない ——
+   1件選ぶたびに引き直すと、押した場所からスクロールが飛ぶ */
+function paintSelHead(el) {
+  const n = selKeys.size;
+  const btn = el.querySelector(".docopy");
+  if (btn) { btn.textContent = "コピー " + n + "件"; btn.disabled = n === 0; }
+  const box = el.querySelector(".allbox");
+  if (box) box.checked = n > 0;
+  const lbl = el.querySelector(".pickall");
+  if (lbl) {
+    lbl.querySelector("span").textContent = n > 0 ? "全解除" : "全選択";
+    lbl.title = n > 0 ? "選択をすべて外す" : "出ている分をすべて選ぶ";
+  }
+}
+
 function renderLane(lane, prs, emptyMsg) {
   const n = prs ? prs.length : 0;
-  const rows = prs && prs.length
-    ? prs.map((pr, i) => prRow(pr, i)).join("")
-    : '<p class="empty">' + esc(emptyMsg || "いまは空です。") + "</p>";
 
-  // コピーは「いま出ている分」が対象。中身が無いときはボタンを出さない
+  // コピーは「いま出ている分」から選ぶ。中身が無いときはボタンを出さない
   const canCopy = lane.copy && prs && prs.length > 0;
+  // 選択中のレーンが空になったら（絞り込みで落ちた等）モードを畳む
+  if (selLane === lane.id && !canCopy) dropSelect();
+  const sel = selLane === lane.id;
+
+  const rows = prs && prs.length
+    ? prs.map((pr, i) => prRow(pr, i, sel)).join("")
+    : '<p class="empty">' + esc(emptyMsg || "いまは空です。") + "</p>";
   const more = (lane.paged && prs)
     ? '<button class="more" type="button"' + (closedLoading || closedEnd ? " disabled" : "") + ">" +
         (closedLoading ? "読み込み中…" : closedEnd ? "これ以上ありません" : "もっと見る") + "</button>"
@@ -1553,15 +1827,12 @@ function renderLane(lane, prs, emptyMsg) {
     '<div class="lane-body">' +
       '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
         (lane.sub ? '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" : "") +
-        (canCopy
-          ? '<span class="acts">' +
-              '<button class="copy" type="button" data-kind="list" aria-label="この一覧をコピー" title="この一覧をコピー">' + ICON_COPY + "</button>" +
-              '<button class="copy" type="button" data-kind="post" aria-label="レビュー依頼の文面ごとコピー" title="レビュー依頼の文面ごとコピー">' + ICON_DOC + "</button>" +
-            "</span>"
-          : "") +
+        (canCopy ? '<span class="acts">' + (sel ? selActsHtml() : copyActsHtml(lane)) + "</span>" : "") +
       "</div>" +
       rows + more +
     "</div>";
+
+  el.classList.toggle("sel", sel);
 
   const moreBtn = el.querySelector(".more");
   if (moreBtn) moreBtn.onclick = () => loadClosed(false);
@@ -1594,14 +1865,46 @@ function renderLane(lane, prs, emptyMsg) {
     };
   });
 
-  if (canCopy) {
+  if (sel) {
+    // 行はどこを押しても選択がトグルする。チェックボックスだけを的にすると
+    // 数ミリの点を狙う操作になり、1〜3件選ぶだけで疲れる
+    el.querySelectorAll(".pr-row").forEach((row) => {
+      row.onclick = () => {
+        const key = prKey(prs[Number(row.dataset.i)]);
+        const on = !selKeys.has(key);
+        if (on) selKeys.add(key); else selKeys.delete(key);
+        // 押した行と見出しだけ直す。引き直すとスクロールが飛ぶ
+        row.classList.toggle("picked", on);
+        const box = row.querySelector(".pick input");
+        if (box) box.checked = on;
+        paintSelHead(el);
+      };
+    });
+
+    const allBox = el.querySelector(".allbox");
+    if (allBox) allBox.onchange = () => {
+      if (selKeys.size) selKeys.clear();
+      else for (const pr of prs) selKeys.add(prKey(pr));
+      renderLane(lane, prs, emptyMsg);   // 全行の見た目が変わるので、ここは引き直す
+    };
+
+    const doBtn = el.querySelector(".docopy");
+    if (doBtn) doBtn.onclick = () => {
+      const picked = prs.filter((pr) => selKeys.has(prKey(pr)));
+      if (!picked.length) return;
+      const body = listText(picked);
+      // 合図を出し切ってから閉じる。すぐ閉じると renderBoard でボタンごと
+      // 作り直され、「コピーしました」が出ないまま盤面が動く
+      copyText(doBtn, "コピー " + picked.length + "件",
+        selKind === "post" ? REVIEW_TEMPLATE + "\n\n" + body : body,
+        closeSelect);
+    };
+
+    const xBtn = el.querySelector(".xbtn");
+    if (xBtn) xBtn.onclick = () => closeSelect();
+  } else if (canCopy) {
     el.querySelectorAll(".copy").forEach((btn) => {
-      const icon = btn.dataset.kind === "post" ? ICON_DOC : ICON_COPY;
-      btn.onclick = () => copyText(
-        btn,
-        icon,
-        btn.dataset.kind === "post" ? REVIEW_TEMPLATE + "\n\n" + listText(prs) : listText(prs)
-      );
+      btn.onclick = () => openSelect(lane.id, btn.dataset.kind);
     });
   }
 
@@ -1615,16 +1918,24 @@ function listText(prs) {
   ).join("\n");
 }
 
-/* クリップボードへ入れて、結果を一瞬アイコンで知らせる */
-function copyText(btn, icon, text) {
-  const flash = (mark, cls) => {
+/* クリップボードへ入れて、結果を一瞬アイコンで知らせる。
+   onDone は合図が終わったあとに呼ぶ。渡すのは成功したときだけ ——
+   失敗して選択モードを閉じると、貼るものが無いのに選び直しから始まる */
+function copyText(btn, icon, text, onDone) {
+  const flash = (mark, cls, after) => {
     btn.innerHTML = mark;
     btn.classList.add(cls);
-    setTimeout(() => { btn.innerHTML = icon; btn.classList.remove(cls); }, 1400);
+    setTimeout(() => {
+      btn.innerHTML = icon;
+      btn.classList.remove(cls);
+      if (after) after();
+    }, FLASH_MS);
   };
 
   if (!navigator.clipboard) { flash(ICON_FAIL, "fail"); return; }
-  navigator.clipboard.writeText(text).then(() => flash(ICON_DONE, "done"), () => flash(ICON_FAIL, "fail"));
+  navigator.clipboard.writeText(text).then(
+    () => flash(ICON_DONE, "done", onDone),
+    () => flash(ICON_FAIL, "fail"));
 }
 
 /* 「08/19 - 3時間前」。左が作成日、右が最終更新からの経過。
@@ -1633,8 +1944,8 @@ function copyText(btn, icon, text) {
    出したばかりの PR に見えてしまい、黙って嘘をつくことになる */
 function whenHtml(pr) {
   const born = pr.created_at;
-  return '<span class="when" title="作成 ' + (born ? fullStamp(born) : "不明") +
-    " ／ 最終更新 " + fullStamp(pr.updated_at) + '">' +
+  return '<span class="when" data-when="作成 ' + (born ? fullStamp(born) : "不明") +
+    "&#10;更新 " + fullStamp(pr.updated_at) + '">' +
     (born ? mmdd(born) : "--/--") + " - " + timeAgo(pr.updated_at) +
     "</span>";
 }
@@ -1678,12 +1989,23 @@ function wireCounts(root) {
   });
 }
 
-/* ブランチ名。取れない PR では出さない */
+/* ブランチ名。<この PR> → <merge先> の順で、入る向きを矢印で出す。
+   どちらの名前も押せて、押したほうがコピーされる。片方しか取れない PR では
+   矢印を出さずに取れたほうだけ並べる（前回のキャッシュには merge 先が
+   入っていないので、更新するまではこの PR のブランチ名だけになる。
+   相手のいない矢印を出しても、どちら側が欠けたのか読めない） */
 function branchHtml(pr) {
-  const ref = pr.head && pr.head.ref;
-  if (!ref) return "";
-  return '<button class="branch" type="button" data-branch="' + esc(ref) + '"' +
+  const head = pr.head && pr.head.ref;
+  const base = pr.base && pr.base.ref;
+  if (!head && !base) return "";
+  const btn = (ref) =>
+    '<button class="branch" type="button" data-branch="' + esc(ref) + '"' +
     ' title="ブランチ名をコピー">' + esc(ref) + "</button>";
+  return '<span class="branches">' +
+    (head ? btn(head) : "") +
+    (base && head ? '<span class="bw">→</span>' : "") +
+    (base ? btn(base) : "") +
+    "</span>";
 }
 
 /* ブランチ名を押したらコピーする。盤面とメモの見出しの両方で使う */
@@ -1732,11 +2054,15 @@ function prCard(pr) {
 }
 
 /* 盤面に並ぶ1行。カードに操作を足したもの */
-function prRow(pr, i) {
+function prRow(pr, i, sel) {
   const inScope = labelOf(pr) === LABELS.IN;
   const memo = memoOf(pr);
+  const picked = sel && selKeys.has(prKey(pr));
 
-  return '<div class="pr-row' + (inScope ? "" : " out") + (isWaiting(pr) ? " waiting" : "") + '">' +
+  return '<div class="pr-row' + (inScope ? "" : " out") + (isWaiting(pr) ? " waiting" : "") +
+      (picked ? " picked" : "") + '" data-i="' + i + '">' +
+    // 選択中だけ出す印。押す相手は行そのものなので、これは的ではない
+    (sel ? '<span class="pick"><input type="checkbox" tabindex="-1"' + (picked ? " checked" : "") + "></span>" : "") +
     prCard(pr) +
     '<div class="pr-actions">' +
       '<button class="memo-tag' + (memo ? " has" : "") + '" type="button" data-i="' + i + '"' +
@@ -1806,19 +2132,19 @@ function paintPeople(box, isDrawer) {
 /* 設定の中と盤面の上で同じもの。押せる範囲が名前の幅ぶんある方がいいので、
    縦に並ぶチェックボックスではなくトグルにしてある */
 function personToggle(person) {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "who";
-  b.dataset.person = person.key;
-  b.textContent = "@" + person.login;
+  const b = toggleBtn({
+    label: "@" + person.login,
+    kind: "who",
+    data: { person: person.key },
+    on: !peopleOff.has(person.key),
+    toggle: (on) => togglePerson(person.key, on)
+  });
   if (person.self) {
     const tag = document.createElement("span");
     tag.className = "self";
     tag.textContent = "自分";
     b.append(tag);
   }
-  b.setAttribute("aria-pressed", String(!peopleOff.has(person.key)));
-  b.onclick = () => togglePerson(person.key, b.getAttribute("aria-pressed") !== "true");
   return b;
 }
 
@@ -1858,20 +2184,20 @@ function renderLaneFilter() {
   // 1本しかないタブでは、畳むトグルを出す意味がない
   $("lanegroup").hidden = lanes.length < 2;
   for (const lane of lanes) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "lane-tag";
-    b.textContent = lane.rail;
-    b.title = lane.title;
-    b.setAttribute("aria-pressed", String(!laneOff.has(lane.id)));
-    b.onclick = () => {
-      if (laneOff.has(lane.id)) laneOff.delete(lane.id);
-      else laneOff.add(lane.id);
-      saveView();
-      renderLaneFilter();
-      syncLanes();
-    };
-    box.append(b);
+    box.append(toggleBtn({
+      label: lane.rail,
+      kind: "lane-tag",
+      title: lane.title,
+      on: !laneOff.has(lane.id),
+      toggle: (on) => {
+        if (on) laneOff.delete(lane.id);
+        else laneOff.add(lane.id);
+        saveView();
+        renderLaneFilter();
+        closeSelectIfHidden();
+        syncLanes();
+      }
+    }));
   }
 }
 
@@ -1965,6 +2291,8 @@ const autoPaused = (at) => !runsToday(at) || inQuietHours(at);
 /* タイマーから呼ぶほうだけ止める。更新ボタンと r はいつでも効く */
 function autoRefresh() {
   if (autoPaused()) return;
+  // 選択中に描き直すと、選んでいる途中が消える。閉じたときに1回だけ走らせる
+  if (selLane) { refreshPending = true; return; }
   refresh();
 }
 
@@ -2034,7 +2362,38 @@ function paintTabs() {
   for (const id of ["open", "closed"]) {
     $("tab-" + id).setAttribute("aria-selected", String(activeTab === id));
   }
+  paintTabFilters();
 }
+
+/* 絞り込みの帯のうち、タブによって意味を持たなくなるもの。
+   「待ち」は open の PR にだけ効くので closed では押せなくする（消さない ——
+   位置が動くと押し間違える）。closed / merged は逆に open では意味が無いので隠す */
+function paintTabFilters() {
+  const closed = activeTab === "closed";
+  $("waitfilter").disabled = closed;
+  $("closedfilter").hidden = !closed;
+  $("mergedfilter").hidden = !closed;
+}
+
+function paintClosedFilters() {
+  const set = (id, on, name) => {
+    const b = $(id);
+    b.setAttribute("aria-pressed", String(!on));
+    b.title = on ? name + "も出している — 押すと隠す" : name + "を隠している — 押すと出す";
+    b.setAttribute("aria-label", b.title);
+  };
+  set("closedfilter", showUnmerged, "merge せずに閉じた PR ");
+  set("mergedfilter", showMerged, "merge した PR ");
+}
+
+$("closedfilter").onclick = () => {
+  showUnmerged = !showUnmerged;
+  saveView(); paintClosedFilters(); renderBoard();
+};
+$("mergedfilter").onclick = () => {
+  showMerged = !showMerged;
+  saveView(); paintClosedFilters(); renderBoard();
+};
 
 function setTab(tab) {
   if (activeTab === tab) return;
@@ -2042,6 +2401,7 @@ function setTab(tab) {
   saveView();
   paintTabs();
   renderLaneFilter();   // タブごとに畳めるレーンが変わる
+  closeSelectIfHidden();
   syncLanes();
   // closed は開いたときに初めて取りに行く。普段の更新には足さない
   if (tab === "closed" && fetchedClosed === null) loadClosed(true);
@@ -2093,6 +2453,14 @@ document.querySelectorAll("[data-fold]").forEach((btn) => {
 /* 使用設定のトグルは「並んでいるものを出す / 出さない」だけで、一覧そのものは
    基本設定の欄で打つ。並びの末尾から、その欄まで連れて行くボタンを置く。
    同じ引き出しの中の離れた場所なので、開いて終わりにせず、そこまでスクロールする */
+/* 引き出しをいちばん下まで送る。接続テストの結果は下端に出るので、
+   押したあと自分でスクロールしなくても読める位置にする */
+function scrollDrawerToBottom() {
+  const d = $("settings");
+  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  d.scrollTo({ top: d.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+}
+
 function jumpTo(secId, inputId) {
   const sec = $(secId);
   fold(sec, true);
@@ -2127,20 +2495,19 @@ function renderDays() {
   const box = $("dayfilter");
   box.textContent = "";
   for (let d = 0; d < 7; d++) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "repo";
-    b.dataset.day = d;   // 週末の下地は CSS 側でこれを見る
-    b.textContent = DAY_NAMES[d];
-    b.setAttribute("aria-pressed", String(daysOn.has(d)));
-    b.onclick = () => {
-      if (daysOn.has(d)) daysOn.delete(d);
-      else daysOn.add(d);
-      renderDays();
-      showDays();
-      saveSettingsNow();
-    };
-    box.append(b);
+    box.append(toggleBtn({
+      label: DAY_NAMES[d],
+      kind: "repo",               // 曜日もリポジトリと同じ形（角ばった箱に取り消し線）
+      data: { day: d },           // 週末の下地は CSS 側でこれを見る
+      on: daysOn.has(d),
+      toggle: (on) => {
+        if (on) daysOn.add(d);
+        else daysOn.delete(d);
+        renderDays();
+        showDays();
+        saveSettingsNow();
+      }
+    }));
   }
 }
 
@@ -2301,6 +2668,7 @@ $("save").onclick = async () => {
   paintGroups();
   paintSaveState();
   $("testout").hidden = true;
+  $("testout").style.removeProperty("--rows");
   setSettings(false);
   schedule();
   refresh();
@@ -2325,13 +2693,21 @@ $("test").onclick = async () => {
   const row = (cls, mark, text) =>
     lines.push('<div><span class="mark ' + cls + '">' + mark + "</span><span>" + esc(text) + "</span></div>");
   const paint = () => { out.innerHTML = lines.join(""); };
+  // 走り終わったら確保をやめ、届いた分だけの高さに戻す。
+  // トークンが空・認証で落ちたときは1行で終わるので、取った空白が残ると穴になる
+  const done = () => out.style.removeProperty("--rows");
 
   out.hidden = false;
   out.innerHTML = '<div><span class="mark wait">·</span><span>確認中…</span></div>';
+  // 出る行数は押した時点で決まっている（認証1行 ＋ Author の数 ＋ リポジトリの数）。
+  // 残り呼び出し回数の行は gh.remaining 次第で出ないので数に入れない＝最低の行数。
+  // 先に高さを取っておかないと、1行ずつ届くたびに引き出しが下へ伸びる
+  out.style.setProperty("--rows", 1 + mates.length + repos.length);
+  scrollDrawerToBottom();
 
   if (!token) {
     row("ng", "×", "トークンが空です。入力してからもう一度押してください。");
-    paint(); setTokenTrouble(true); return;
+    paint(); done(); setTokenTrouble(true); return;
   }
 
   let me;
@@ -2342,7 +2718,7 @@ $("test").onclick = async () => {
     row("ng", "×", e.status === 401
       ? "トークンが無効か期限切れです。発行し直してください。"
       : "GitHubに接続できません（" + e.message + "）");
-    paint(); setTokenTrouble(true); return;
+    paint(); done(); setTokenTrouble(true); return;
   }
   paint();
 
@@ -2372,13 +2748,30 @@ $("test").onclick = async () => {
 
   if (gh.remaining) row("wait", "·", "1時間あたりの残り呼び出し回数 " + gh.remaining);
   paint();
+  done();
   setTokenTrouble(tokenNg);
 };
+/* レーンの外を押したら選ぶのをやめる。他レーンのコピーを押したときは、
+   そのボタンの onclick が先に走って selLane が新しい方に替わっているので、
+   ここでは閉じない（新しく開いたほうがそのまま残る） */
+document.addEventListener("click", (e) => {
+  if (!selLane) return;
+  // 押した先が引き直しで外れていたら、どこを押したのか辿れない。
+  // 盤面を描き直したのは中の操作なので、外を押したことにはしない ——
+  // ここを見ないと、コピーを押して開いた直後と全選択の直後に、
+  // 自分の操作で開いたモードが自分で閉じる
+  if (!e.target.isConnected) return;
+  if (e.target.closest("#lane-" + selLane)) return;
+  closeSelect();
+});
 document.addEventListener("keydown", (e) => {
   // Esc は入力欄の中からも効かせる
   if (e.key === "Escape" && memoOpen()) { closeMemo(); return; }
   if (e.key === "Escape" && settingsOpen()) { setSettings(false); return; }
+  if (e.key === "Escape" && selLane) { closeSelect(); return; }
   if (memoOpen()) return;   // メモを書いている間は r / s を拾わない
+  // 選んでいる間も拾わない。r は refresh で、選んだ途中が消える
+  if (selLane) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (e.key === "r") refresh();
@@ -2401,7 +2794,8 @@ document.addEventListener("keydown", (e) => {
   loadView();     // 旧い cfg.off / cfg.hidden を引き継ぐことがあるので loadConfig の後
   paintBlind();
   paintWaitFilter();
-  paintTabs();
+  paintClosedFilters();
+  paintTabs();     // 中で paintTabFilters —— タブに合わせて出し分ける
   fillForm();
   // 前回の内容を先に出す。取り直しは裏で走り、終わったら差し替わる
   if (loadCache()) {
