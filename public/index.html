@@ -219,6 +219,15 @@
   .ops-btn[disabled], .ops-btn[disabled]:hover {
     color: var(--faint); border-color: var(--line); background: none; cursor: default;
   }
+  /* draft は「いまそうなっているか」がそのまま操作なので、2つ並べずトグル1つ。
+     押されている色は .tgl に任せる（1か所で持つ方針）。ここで揃えるのは大きさだけ。
+     絞り込みのトグルと同じ語彙で読める —— 押されている＝そうなっている。
+     「待ち」や「closed」を .tgl に寄せていないのは、あちらは
+     押されている＝盤面から外している、と意味が逆だから */
+  .ops-row .tgl { padding: 5px 10px; }
+  .ops-row .tgl[disabled], .ops-row .tgl[disabled]:hover {
+    color: var(--faint); border-color: var(--line); background: none; cursor: default;
+  }
   .ops-btn.done { color: var(--ready); border-color: var(--ready); }
   .ops-btn.fail { color: var(--review); border-color: var(--review); }
   .ops-note {
@@ -227,6 +236,9 @@
   }
   .ops-note .ng { color: var(--review); }
   .ops-note .yes { color: var(--ready); }
+  /* 何もしていないときは行そのものを畳む。空の行のぶん隙間が開くと、
+     ボタンの下に何か出るはずの場所があるように見える */
+  .ops-note:empty { display: none; }
   /* 走っている最中。二度押しを止めるのは disabled 側でやるので、ここは見た目だけ */
   .ops.busy .ops-row { opacity: .55; }
 
@@ -2529,49 +2541,48 @@ function baseHead(d) {
   return enc(d.base.ref) + "..." + head;
 }
 
-/* 押せない理由。灰色になっただけでは、なぜ押せないのかを言っていない */
-function opsNoteHtml() {
+/* ボタンのホバーに出す一言。押せないときは理由、押せるときは効き目。
+   状態を文章で並べるのはやめた —— 「いまは draft ではない」は
+   どちらのボタンが押せるかで分かる。ボタンで言えないもの
+   （なぜ灰色なのか、どれだけ遅れているか）だけを、ここと label に残す */
+function opsTitle(act) {
   const s = opsState;
-  const lines = [];
-  if (s) {
-    if (!s.open) {
-      lines.push(s.merged
-        ? "merge 済みの PR。draft の出し入れも update branch もできません。"
-        : "閉じた PR。draft の出し入れも update branch もできません。");
-    } else {
-      lines.push(s.draft ? "いまは draft。" : "いまは draft ではない。");
-      if (s.dirty) {
-        lines.push('<span class="ng">コンフリクトがある。</span>update branch は base を取り込む操作なので、これでは解けません。');
-      } else if (s.behind === null) {
-        lines.push("base より遅れているかは読めませんでした。update branch は出しません。");
-      } else if (s.behind > 0) {
-        lines.push("base（" + esc(s.base) + "）より " + s.behind + " コミット遅れ。");
-      } else {
-        lines.push('<span class="yes">base に追いついている。</span>update branch は要りません。');
-      }
-    }
+  if (act === "copy") return "この PR 1件を、一覧と同じ書式でコピー";
+  if (!s) return "状態を読めていない";
+  if (!s.open) return s.merged ? "merge 済みの PR" : "閉じた PR";
+  if (act === "draft") {
+    return s.draft ? "いまは draft — 押すと解除してレビューに出す"
+                   : "draft ではない — 押すと draft に戻す";
   }
-  if (opsMsg) lines.push(opsMsg);
-  return lines.join("\n");
+  if (s.dirty) return "コンフリクトがある。update branch は base を取り込む操作なので、これでは解けない";
+  if (s.behind === null) return "base より遅れているかを読めなかった";
+  if (s.behind > 0) return "base（" + s.base + "）より " + s.behind + " コミット遅れ";
+  return "base に追いついている";
 }
 
-const opsNote = () => { $("opsnote").innerHTML = opsNoteHtml(); };
+/* 下の行は、押したあとの進捗と結果だけを出す。何もしていないときは空 */
+const opsNote = () => { $("opsnote").innerHTML = opsMsg; };
 
 function paintOps() {
   const s = opsState;
   const live = s && s.open;
   const btn = (act, label, on, cls) =>
     '<button class="ops-btn' + (cls ? " " + cls : "") + '" type="button" data-act="' + act + '"' +
-      (on ? "" : " disabled") + ">" + label + "</button>";
+      (on ? "" : " disabled") + ' title="' + esc(opsTitle(act)) + '">' + label + "</button>";
+
+  // 遅れの数はボタンに出す。押せるかどうかだけでは、どれだけ遅れているかが出ない
+  const behind = live && s.behind > 0 ? s.behind : 0;
 
   $("opsrow").innerHTML =
-    btn("ready", "draft 解除", !!(live && s.draft)) +
-    btn("draft", "draft 化", !!(live && !s.draft)) +
-    btn("update", "update branch", !!(live && !s.dirty && s.behind > 0)) +
+    // 押されている＝いま draft。押すとその状態が反転する
+    '<button class="ops-btn tgl" type="button" data-act="draft"' +
+      ' aria-pressed="' + String(!!(live && s.draft)) + '"' + (live ? "" : " disabled") +
+      ' title="' + esc(opsTitle("draft")) + '">draft</button>' +
+    btn("update", "update branch" + (behind ? " · " + behind : ""), !!(live && !s.dirty && behind)) +
     // コピーは PR を変えない。状態が読めなくても押せる
     btn("copy", "この1件をコピー", true, "ops-copy");
 
-  $("opsrow").querySelectorAll(".ops-btn").forEach((b) => {
+  $("opsrow").querySelectorAll("button").forEach((b) => {
     b.onclick = () => runOps(b, b.dataset.act);
   });
   opsNote();
@@ -2600,17 +2611,19 @@ async function runOps(btn, act) {
 
   const s = opsState;
   if (!s) return;
-  const word = OPS_WORDS[act];
+  // draft はトグル1つなので、どちらへ動かすかは今の状態から決まる
+  const dir = act === "draft" ? (s.draft ? "ready" : "draft") : act;
+  const word = OPS_WORDS[dir];
   const full = pr.base.repo.full_name;
 
   $("ops").classList.add("busy");
-  $("opsrow").querySelectorAll(".ops-btn").forEach((b) => { b.disabled = true; });
+  $("opsrow").querySelectorAll("button").forEach((b) => { b.disabled = true; });
   opsMsg = word.doing;
   opsNote();
 
   try {
-    if (act === "ready") await ghMutate(Q_TO_READY, { id: s.id });
-    else if (act === "draft") await ghMutate(Q_TO_DRAFT, { id: s.id });
+    if (dir === "ready") await ghMutate(Q_TO_READY, { id: s.id });
+    else if (dir === "draft") await ghMutate(Q_TO_DRAFT, { id: s.id });
     else await ghSend("PUT", "/repos/" + full + "/pulls/" + pr.number + "/update-branch",
       { expected_head_sha: s.sha });
     opsMsg = '<span class="yes">' + word.done + "</span>";
