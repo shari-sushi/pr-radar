@@ -1723,6 +1723,12 @@ function renderBoard() {
 
   const allHidden = shownRepos.length > 0 && hiddenRepos.size === shownRepos.length;
   LANES.forEach((l) => renderLane(l, buckets[l.id], allHidden ? "リポジトリをすべて非表示にしています。" : undefined));
+
+  // 依頼は「来ていれば見る」レーン。1件でもあれば列の先頭に上げ、
+  // 0件なら最後に落とす。並びは grid の order でやる —— DOM の位置を
+  // 動かすとレーンの中の開閉状態やスクロール位置まで作り直すことになるが、
+  // order なら要素はそのまま、見た目の並びだけが変わる
+  $("lane-review").style.order = buckets.review.length > 0 ? "-1" : "1";
 }
 
 async function refresh() {
