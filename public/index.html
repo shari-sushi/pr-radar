@@ -960,13 +960,15 @@
   </aside>
 
   <div class="board" id="board">
+    <!-- 待ち・依頼・下書き ＝ 自分が動くかもしれない PR。1本にまとめる -->
     <div class="col">
       <section class="lane" id="lane-ready" style="--c:var(--ready)"></section>
+      <section class="lane" id="lane-review" style="--c:var(--review)"></section>
       <section class="lane" id="lane-draft" style="--c:var(--draft)"></section>
       <section class="lane" id="lane-closed" style="--c:var(--other)"></section>
     </div>
+    <!-- 他の人の PR。眺めるだけの列 -->
     <div class="col">
-      <section class="lane" id="lane-review" style="--c:var(--review)"></section>
       <section class="lane" id="lane-other" style="--c:var(--other)"></section>
       <section class="lane" id="lane-closed-other" style="--c:var(--other)"></section>
     </div>
