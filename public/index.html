@@ -866,7 +866,7 @@
           <span class="hint" id="intervalval"></span>
         </div>
         <div class="fold" id="f-interval" hidden>
-          <span class="hint">秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+          <span class="hint">これだけ経っていたら、window に戻ってきた時点で更新する（時間ぎりで叩き続けるのはやめた）。秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
         </div>
         <span class="hint warn" id="intervalout" hidden></span>
       </div>
@@ -1057,7 +1057,9 @@ for (const l of LANES) if (!l.tab) l.tab = "open";
 let activeTab = "open";
 
 let cfg = { ...DEFAULTS };
-let timer = null;
+// 最後に更新を試みた時刻。window に戻ってきたときの「経っているか」の基準。
+// refresh() の頭で書く —— 取れたかどうかより「試みた」ことが基準
+let lastFetchAt = null;
 let autoOpened = false;  // トークン未設定で設定を自動で開くのは初回だけ
 
 /* ---------- storage (localStorage) ---------- */
@@ -1732,6 +1734,9 @@ function renderBoard() {
 }
 
 async function refresh() {
+  // 開始時点で書く。ほぼ同時に飛んできた visibilitychange と focus の
+  // 両方から呼ばれても、2本目は「さっき試みたばかり」で流れて二重に叩かない
+  lastFetchAt = new Date();
   const repos = cfg.repos.split("\n").map((s) => s.trim()).filter(Boolean);
   shownRepos = repos;
   for (const r of [...hiddenRepos]) if (!repos.includes(r)) hiddenRepos.delete(r);
@@ -2403,7 +2408,7 @@ function runsToday(at) {
 /* いま自動更新が止まっているか。曜日と時間帯のどちらでも止まる */
 const autoPaused = (at) => !runsToday(at) || inQuietHours(at);
 
-/* タイマーから呼ぶほうだけ止める。更新ボタンと r はいつでも効く */
+/* 自動で呼ぶほうだけ止める。更新ボタンと r はいつでも効く */
 function autoRefresh() {
   if (autoPaused()) return;
   // 選択中に描き直すと、選んでいる途中が消える。閉じたときに1回だけ走らせる
@@ -2411,10 +2416,17 @@ function autoRefresh() {
   refresh();
 }
 
-function schedule() {
-  if (timer) clearInterval(timer);
-  const s = evalSeconds(cfg.interval);
-  if (s !== null && s >= 15) timer = setInterval(autoRefresh, s * 1000);
+/* 時間ぎりで叩き続けるのはやめて、window に戻ってきたときだけ見る。
+   裏で開けっぱなしのタブを律儀に叩き続けない代わりに、見に来た瞬間は
+   必ず経過分だけ古い可能性がある —— そこは「経っていたら」で埋める。
+   閾値は「自動更新」欄をそのまま使う（意味は「これだけ経っていたら」に読み替え）。
+   0 か空はここでも「自動更新なし」のまま */
+function maybeAutoRefresh() {
+  if (document.hidden) return;   // visibilitychange は hidden 側でも飛んでくる
+  const sec = evalSeconds(cfg.interval);
+  if (!sec || sec < 15) return;   // 読めない・0・15秒未満はここでは動かさない
+  const stale = !lastFetchAt || Date.now() - lastFetchAt.getTime() >= sec * 1000;
+  if (stale) autoRefresh();
 }
 
 /* 設定ドロワー。開閉はクラスで持つ（hidden だと transition が効かないため） */
@@ -2882,7 +2894,6 @@ function intervalBlocker() {
 function saveSettingsNow() {
   const bad = intervalBlocker();
   if (bad) return bad;
-  const before = cfg.interval;
   cfg = {
     ...cfg,
     interval: $("interval").value.trim(),
@@ -2891,9 +2902,6 @@ function saveSettingsNow() {
     days: [...daysOn].sort((a, b) => a - b),
   };
   saveConfigJson();
-  // 間隔が変わったときだけ張り直す。毎回呼ぶと、打つ / 押すたびに
-  // 次の更新までのカウントが 0 に戻り続ける
-  if (String(cfg.interval) !== String(before)) schedule();
   return null;
 }
 
@@ -2920,6 +2928,14 @@ function flushSettings() {
 
 document.addEventListener("visibilitychange", () => { if (document.hidden) flushSettings(); });
 window.addEventListener("pagehide", flushSettings);
+
+/* window に戻ってきたら、経っていれば取り直す。visibilitychange と focus の
+   両方に付けるのはブラウザ・OS依存の抜けを埋めるため ——
+   同じタブの切り替えは visibilitychange だけ、別ウィンドウ間は
+   focus だけで拾えることがあり、片方だけだと取りこぼす。
+   二重に飛んできても、refresh() の頭で lastFetchAt を書くので実害はない */
+document.addEventListener("visibilitychange", maybeAutoRefresh);
+window.addEventListener("focus", maybeAutoRefresh);
 
 /* 式のままだと何秒か分からないので、結果をその場で添える。
    出し先は2つ。値は入力欄の右隣（#intervalval）、注意は下に赤で（#intervalout）。
@@ -2968,7 +2984,6 @@ $("save").onclick = async () => {
   $("testout").hidden = true;
   $("testout").style.removeProperty("--rows");
   setSettings(false);
-  schedule();
   refresh();
 };
 $("forget").onclick = async () => {
@@ -3101,7 +3116,6 @@ document.addEventListener("keydown", (e) => {
     renderBoard();
     $("status").textContent = "前回の内容";
   }
-  schedule();
   refresh();
   if (activeTab === "closed") loadClosed(true);
 })();
