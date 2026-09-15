@@ -1723,6 +1723,12 @@ function renderBoard() {
   }
   for (const k in buckets) buckets[k].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
+  // 選んだ行をレーンをまたいで集め直せるように、振り分けを残しておく
+  lastBuckets = buckets;
+  // 選ぶ対象が1つも無くなったらモードを畳む。見出しの操作ごと出せなくなるので、
+  // 状態だけ落とせば足りる（ここは描き直しの直前なので renderBoard は呼べない）
+  if (selOn && !selLanes().length) dropSelect();
+
   const allHidden = shownRepos.length > 0 && hiddenRepos.size === shownRepos.length;
   LANES.forEach((l) => renderLane(l, buckets[l.id], allHidden ? "リポジトリをすべて非表示にしています。" : undefined));
 
@@ -1830,18 +1836,50 @@ function syncLanes() {
 /* ---------- 選択してコピー ---------- */
 /* コピーを押したときだけ開く一時的なモード。1タスクが 1〜3 リポにまたがるので、
    欲しいのは一覧の全部ではなく数件。だから全部から引くのではなく、0件から積む。
-   保存はしない —— 閉じたら捨てる。次に開いたときは必ず0件から始まる */
-let selLane = null;        // 開いているレーンの id。null ならどのレーンも通常表示
+   保存はしない —— 閉じたら捨てる。次に開いたときは必ず0件から始まる。
+
+   開くのはレーン1本ではなく、コピーできるレーンのまとまり（待ち＋下書き）。
+   1タスクの中に、出したものと下書きのままのものが混ざるので、
+   レーンをまたいで1回で拾えないと、2回コピーして2回貼ることになる */
+let selOn = false;         // 選択モードが開いているか
 let selKind = "list";      // list / post のどちらのボタンから入ったか
 let selKeys = new Set();   // 選んだ PR。prKey で持つ（index は絞り込みでずれる）
+/* 直近に盤面へ流した振り分け。renderBoard が書く。
+   選んだ行をレーンをまたいで集め直すのに使う */
+let lastBuckets = null;
 /* 選択中に来た自動更新をここで待たせる。何回来ても走らせるのは1回 */
 let refreshPending = false;
 /* 「コピーしました」を出しておく時間。flash と、閉じるまでの待ちの両方で使う。
    別々に持つと片方だけ直したときに合図が途中で切れる */
 const FLASH_MS = 1400;
 
-function openSelect(laneId, kind) {
-  selLane = laneId;
+/* いま盤面に出ていて、選ぶ対象になるレーン（＝ copy を持つレーン）。
+   タブ・レーンの絞り込みで落ちているものと、中身が空のものは外す */
+function selLanes() {
+  return LANES.filter((l) =>
+    l.copy && l.tab === activeTab && !laneOff.has(l.id) &&
+    lastBuckets && lastBuckets[l.id] && lastBuckets[l.id].length);
+}
+
+/* 見出しの操作（全選択 / コピー n件 / ×）を出すレーン。出ている先頭の1本だけ。
+   両方に出すと同じ数字が2か所に並び、「このレーンで3件」と読めてしまう。
+   先頭が盤面から消えたら、次のレーンへ自然に移る */
+function selHeadLane() {
+  return selLanes()[0] || null;
+}
+
+/* 選んだ PR を盤面の並び順で集める。盤面から落ちた行は数にも本文にも入れない
+   —— 見えていないものを黙ってコピーしない */
+function selPrs() {
+  const out = [];
+  for (const lane of selLanes()) {
+    for (const pr of lastBuckets[lane.id]) if (selKeys.has(prKey(pr))) out.push(pr);
+  }
+  return out;
+}
+
+function openSelect(kind) {
+  selOn = true;
   selKind = kind;
   selKeys.clear();
   renderBoard();
@@ -1851,29 +1889,27 @@ function openSelect(laneId, kind) {
    スキップ（捨てる）にはしない —— 閉じたときに走らせれば、見に戻った瞬間が
    いちばん新しい。モードが「穴」ではなく「一時停止」になる */
 function closeSelect() {
-  if (!selLane) return;
+  if (!selOn) return;
   const pending = refreshPending;
   dropSelect();
   renderBoard();
   if (pending) refresh();
 }
 
-/* レーンの出し入れやタブの移動で、選んでいたレーンが盤面から消えるなら
-   選ぶのをやめる。ここで閉じないと、見えないところに選択モードの見出しが
-   残り、戻したときに「全選択 / コピー 0件」の並びだけが出てくる。
-   関係ないレーンを畳んだときは巻き込まない —— 選んでいる途中を消さない */
-function closeSelectIfHidden() {
-  if (!selLane) return;
-  const lane = LANES.find((l) => l.id === selLane);
-  if (lane && lane.tab === activeTab && !laneOff.has(lane.id)) return;
-  closeSelect();
+/* レーンの出し入れやタブの移動のあとに呼ぶ。選ぶ対象が盤面から全部消えたら
+   やめる。1本でも残っていれば引き直す —— 見出しの操作は「出ている先頭の
+   レーン」に置くので、そこが消えたら次へ移さないと、操作だけがどこにも無くなる */
+function syncSelect() {
+  if (!selOn) return;
+  if (!selLanes().length) { closeSelect(); return; }
+  renderBoard();
 }
 
 /* 状態だけ落とす。描き直しの途中（renderLane）からも呼ぶので、
    ここから renderBoard は呼べない。待たせていた更新も捨てる ——
    拾い直さなくても、次の tick で普通に走る */
 function dropSelect() {
-  selLane = null;
+  selOn = false;
   selKeys.clear();
   refreshPending = false;
 }
@@ -1890,7 +1926,7 @@ function copyActsHtml(lane) {
    全選択と全解除は1つのトグルにする —— ボタンを2つ並べるより、
    選択0なら「全選択」、1件以上なら「全解除」の1つで両方できる */
 function selActsHtml() {
-  const n = selKeys.size;
+  const n = selPrs().length;
   const all = n > 0;
   return '<label class="pickall" title="' + (all ? "選択をすべて外す" : "出ている分をすべて選ぶ") + '">' +
       '<input type="checkbox" class="allbox"' + (all ? " checked" : "") + ">" +
@@ -1902,8 +1938,11 @@ function selActsHtml() {
 
 /* 見出しの数とトグルの字だけ塗り替える。行は触らない ——
    1件選ぶたびに引き直すと、押した場所からスクロールが飛ぶ */
-function paintSelHead(el) {
-  const n = selKeys.size;
+function paintSelHead() {
+  const head = selHeadLane();
+  if (!head) return;
+  const el = $("lane-" + head.id);
+  const n = selPrs().length;
   const btn = el.querySelector(".docopy");
   if (btn) { btn.textContent = "コピー " + n + "件"; btn.disabled = n === 0; }
   const box = el.querySelector(".allbox");
@@ -1920,9 +1959,10 @@ function renderLane(lane, prs, emptyMsg) {
 
   // コピーは「いま出ている分」から選ぶ。中身が無いときはボタンを出さない
   const canCopy = lane.copy && prs && prs.length > 0;
-  // 選択中のレーンが空になったら（絞り込みで落ちた等）モードを畳む
-  if (selLane === lane.id && !canCopy) dropSelect();
-  const sel = selLane === lane.id;
+  // 選択中は、コピーできるレーンが全部まとめて選ぶ側に回る
+  const sel = selOn && canCopy;
+  // ただし見出しの操作を出すのは、出ているレーンの先頭1本だけ
+  const head = sel && selHeadLane() && selHeadLane().id === lane.id;
 
   const rows = prs && prs.length
     ? prs.map((pr, i) => prRow(pr, i, sel)).join("")
@@ -1938,7 +1978,9 @@ function renderLane(lane, prs, emptyMsg) {
     '<div class="lane-body">' +
       '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
         (lane.sub ? '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" : "") +
-        (canCopy ? '<span class="acts">' + (sel ? selActsHtml() : copyActsHtml(lane)) + "</span>" : "") +
+        (!canCopy ? ""
+          : sel ? (head ? '<span class="acts">' + selActsHtml() + "</span>" : "")
+                : '<span class="acts">' + copyActsHtml(lane) + "</span>") +
       "</div>" +
       rows + more +
     "</div>";
@@ -1993,20 +2035,22 @@ function renderLane(lane, prs, emptyMsg) {
         row.classList.toggle("picked", on);
         const box = row.querySelector(".pick input");
         if (box) box.checked = on;
-        paintSelHead(el);
+        // 数は別のレーンの見出しに出ていることがある。場所は paintSelHead が知っている
+        paintSelHead();
       };
     });
 
     const allBox = el.querySelector(".allbox");
     if (allBox) allBox.onchange = () => {
-      if (selKeys.size) selKeys.clear();
-      else for (const pr of prs) selKeys.add(prKey(pr));
-      renderLane(lane, prs, emptyMsg);   // 全行の見た目が変わるので、ここは引き直す
+      // 全選択も全解除も、まとまり（待ち＋下書き）の全部が対象
+      if (selPrs().length) selKeys.clear();
+      else for (const l of selLanes()) for (const pr of lastBuckets[l.id]) selKeys.add(prKey(pr));
+      renderBoard();   // 複数レーンの全行で見た目が変わるので、盤面ごと引き直す
     };
 
     const doBtn = el.querySelector(".docopy");
     if (doBtn) doBtn.onclick = () => {
-      const picked = prs.filter((pr) => selKeys.has(prKey(pr)));
+      const picked = selPrs();
       if (!picked.length) return;
       const body = listText(picked);
       // 合図を出し切ってから閉じる。すぐ閉じると renderBoard でボタンごと
@@ -2020,7 +2064,7 @@ function renderLane(lane, prs, emptyMsg) {
     if (xBtn) xBtn.onclick = () => closeSelect();
   } else if (canCopy) {
     el.querySelectorAll(".copy").forEach((btn) => {
-      btn.onclick = () => openSelect(lane.id, btn.dataset.kind);
+      btn.onclick = () => openSelect(btn.dataset.kind);
     });
   }
 
@@ -2314,7 +2358,7 @@ function renderLaneFilter() {
         else laneOff.add(lane.id);
         saveView();
         renderLaneFilter();
-        closeSelectIfHidden();
+        syncSelect();
         syncLanes();
       }
     }));
@@ -2412,7 +2456,7 @@ const autoPaused = (at) => !runsToday(at) || inQuietHours(at);
 function autoRefresh() {
   if (autoPaused()) return;
   // 選択中に描き直すと、選んでいる途中が消える。閉じたときに1回だけ走らせる
-  if (selLane) { refreshPending = true; return; }
+  if (selOn) { refreshPending = true; return; }
   refresh();
 }
 
@@ -2711,7 +2755,7 @@ function setTab(tab) {
   saveView();
   paintTabs();
   renderLaneFilter();   // タブごとに畳めるレーンが変わる
-  closeSelectIfHidden();
+  syncSelect();
   syncLanes();
   // closed は開いたときに初めて取りに行く。普段の更新には足さない
   if (tab === "closed" && fetchedClosed === null) loadClosed(true);
@@ -3064,17 +3108,16 @@ $("test").onclick = async () => {
   done();
   setTokenTrouble(tokenNg);
 };
-/* レーンの外を押したら選ぶのをやめる。他レーンのコピーを押したときは、
-   そのボタンの onclick が先に走って selLane が新しい方に替わっているので、
-   ここでは閉じない（新しく開いたほうがそのまま残る） */
+/* 選ぶ対象のレーンの外を押したら、選ぶのをやめる。待ちと下書きは
+   1つのまとまりなので、その間を行き来しても閉じない */
 document.addEventListener("click", (e) => {
-  if (!selLane) return;
+  if (!selOn) return;
   // 押した先が引き直しで外れていたら、どこを押したのか辿れない。
   // 盤面を描き直したのは中の操作なので、外を押したことにはしない ——
   // ここを見ないと、コピーを押して開いた直後と全選択の直後に、
   // 自分の操作で開いたモードが自分で閉じる
   if (!e.target.isConnected) return;
-  if (e.target.closest("#lane-" + selLane)) return;
+  if (LANES.some((l) => l.copy && e.target.closest("#lane-" + l.id))) return;
   closeSelect();
 });
 document.addEventListener("keydown", (e) => {
@@ -3082,10 +3125,10 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && opsOpen()) { closeOps(); return; }
   if (e.key === "Escape" && memoOpen()) { closeMemo(); return; }
   if (e.key === "Escape" && settingsOpen()) { setSettings(false); return; }
-  if (e.key === "Escape" && selLane) { closeSelect(); return; }
+  if (e.key === "Escape" && selOn) { closeSelect(); return; }
   if (memoOpen() || opsOpen()) return;   // メモ・操作を開いている間は r / s を拾わない
   // 選んでいる間も拾わない。r は refresh で、選んだ途中が消える
-  if (selLane) return;
+  if (selOn) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (e.key === "r") refresh();
