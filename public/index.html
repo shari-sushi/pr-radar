@@ -239,6 +239,26 @@
   /* 何もしていないときは行そのものを畳む。空の行のぶん隙間が開くと、
      ボタンの下に何か出るはずの場所があるように見える */
   .ops-note:empty { display: none; }
+
+  /* 走らせた操作の行。modal を閉じても結果が分かるように画面の下に出す。
+     modal より前に出す（z-index 30 > 20）—— 別の PR を見ている最中に
+     終わったことが、そのまま目に入る */
+  .ops-log {
+    position: fixed; left: 0; bottom: 0; z-index: 30;
+    display: grid; gap: 2px; justify-items: start;
+    padding: 12px 14px; pointer-events: none; max-width: 100%;
+  }
+  .ops-log[hidden] { display: none; }
+  .ops-log div {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .02em;
+    color: var(--panel); background: rgba(14, 26, 34, .93);
+    border-radius: 2px; padding: 5px 9px;
+    max-width: 100%; overflow-wrap: anywhere;
+  }
+  /* --ready / --review は明るい地色に合わせた濃さで、この黒い地では沈む。
+     ここだけ地色に合わせた明るい側を持つ */
+  .ops-log .yes { color: #8FE0CD; }
+  .ops-log .ng { color: #FFB3BD; }
   /* 走っている最中。二度押しを止めるのは disabled 側でやるので、ここは見た目だけ */
   .ops.busy .ops-row { opacity: .55; }
 
@@ -981,6 +1001,8 @@
     </div>
   </div>
 
+  <div class="ops-log" id="opslog" hidden></div>
+
   <div class="ops-scrim" id="opsscrim" hidden>
     <div class="ops" id="ops" role="dialog" aria-modal="true" aria-label="この PR の操作">
       <div class="ops-head" id="opshead"></div>
@@ -1464,6 +1486,9 @@ async function fetchCounts(repos) {
    そのまま置くと localStorage を食い潰す */
 function slim(pr) {
   return {
+    // node_id は draft の出し入れ（GraphQL）に要る。これが無いと、
+    // 前回のキャッシュから出ている行は調べ直すまで押せない
+    node_id: pr.node_id || "",
     number: pr.number, title: pr.title, html_url: pr.html_url, draft: !!pr.draft,
     created_at: pr.created_at, updated_at: pr.updated_at,
     user: { login: pr.user ? pr.user.login : "" },
@@ -2515,19 +2540,39 @@ function closeMemo() {
 $("memoscrim").onclick = (e) => { if (e.target === $("memoscrim")) closeMemo(); };
 
 /* ---------- 行の歯車。1件ごとの操作 ---------- */
-/* draft の出し入れと update branch は、押せるかどうかがその時の PR 次第。
-   盤面のデータは前回の取得時点のもので、前回のキャッシュから出ていることもある。
-   だから開いたところで取り直す —— 古い状態のまま「できます」と出して、
-   押した先で 422 を返されるのがいちばんたちが悪い */
+/* draft かどうかは調べに行かない。待ちの欄に居れば draft ではないし、
+   下書きの欄に居れば draft —— 盤面がすでに知っていることで、
+   待たせる理由がない。だから開いた時点でトグルは押せる。
+   調べに行くのは行が持っていないぶんだけ（base からの遅れと head の sha）で、
+   それは裏で走らせる。結果が来たら update branch の側だけが変わる */
 let opsFor = null;     // 開いている PR（盤面の行が持っているもの）
-let opsState = null;   // 取り直した状態。取れるまでは null
-let opsMsg = "";       // 理由の行の末尾に出す一言（調べています / 結果 / 失敗）
+let opsState = null;   // いまの状態。開いた直後は行が知っている分だけ
+let opsMsg = "";       // 理由の行の末尾に出す一言（進捗 / 結果 / 失敗）
+let opsLoad = null;    // 裏で走っている調べもの。早く押されたら待ち合わせる
 const opsOpen = () => !$("opsscrim").hidden;
 
-async function openOps(pr) {
+/* 盤面の行が持っている分だけで作る初期値。draft と open はここで確定する。
+   遅れ（behind）と sha は行が持っていないので、調べがつくまでは分からない
+   —— loading を立てて「読めなかった」と区別する */
+function seedOps(pr) {
+  return {
+    draft: !!pr.draft,
+    // 待ち・下書きの欄に居る時点で open。閉じたものは closed の欄にしか出ない
+    open: pr.state ? pr.state === "open" : true,
+    merged: !!pr.merged_at,
+    id: pr.node_id || "",
+    sha: "",
+    base: (pr.base && pr.base.ref) || "",
+    dirty: false,
+    behind: null,
+    loading: true
+  };
+}
+
+function openOps(pr) {
   opsFor = pr;
-  opsState = null;
-  opsMsg = "状態を調べています…";
+  opsState = seedOps(pr);
+  opsMsg = "";
   // 見出しはメモと同じ流儀。そのPRのカードをそのまま置く
   $("opshead").innerHTML = prCard(pr);
   wireBranchCopy($("opshead"));
@@ -2535,17 +2580,62 @@ async function openOps(pr) {
   $("opsscrim").hidden = false;
   document.body.classList.add("locked");
   paintOps();
-  await loadOps(pr);
+  paintOpsLog();   // この PR のぶんは modal 側に出るので、下からは引っ込める
+  opsLoad = loadOps(pr);
 }
 
+/* 走らせた操作の途中でも閉じられる。閉じたぶんは下の行（ops-log）が引き継ぐ */
 function closeOps() {
   if (!opsOpen()) return;
   opsFor = null;
   opsState = null;
   opsMsg = "";
+  opsLoad = null;
   $("opsscrim").hidden = true;
   $("ops").classList.remove("busy");
   document.body.classList.remove("locked");
+  paintOpsLog();   // 走っている分があれば、ここで下に出てくる
+}
+
+/* ---------- 走らせた操作を追う行 ---------- */
+/* modal を閉じても結果が分かるように、画面の下に出す。
+   modal が開いてその PR を映しているあいだは出さない —— 同じことが
+   2か所に出る。閉じた時点でこちらへ移る */
+let opsJobs = [];
+
+function opsJobText(job) {
+  const head = job.name + " " + job.label + " ";
+  if (job.state === "run") return head + "処理中…";
+  if (job.state === "ng") return head + "エラー: " + job.detail;
+  return head + "処理完了";
+}
+
+function paintOpsLog() {
+  const show = opsJobs.filter((j) => !(opsOpen() && opsFor === j.pr));
+  $("opslog").innerHTML = show.map((j) =>
+    '<div class="' + (j.state === "ng" ? "ng" : j.state === "done" ? "yes" : "") + '">' +
+      esc(opsJobText(j)) + "</div>").join("");
+  $("opslog").hidden = !show.length;
+}
+
+function opsJobStart(pr, label) {
+  const job = { pr: pr, name: pr.base.repo.name + " #" + pr.number,
+                label: label, state: "run", detail: "" };
+  opsJobs.push(job);
+  paintOpsLog();
+  return job;
+}
+
+/* 終わったぶんは少し置いてから消す。すぐ消すと、閉じた直後に終わった操作が
+   目に入らないまま消える。失敗は読む時間が要るので長めに置く */
+function opsJobEnd(job, ok, detail) {
+  job.state = ok ? "done" : "ng";
+  job.detail = detail || "";
+  paintOpsLog();
+  setTimeout(() => {
+    opsJobs = opsJobs.filter((j) => j !== job);
+    paintOpsLog();
+  }, ok ? 6000 : 12000);
 }
 
 $("opsscrim").onclick = (e) => { if (e.target === $("opsscrim")) closeOps(); };
@@ -2570,16 +2660,22 @@ async function loadOps(pr, keepMsg) {
     opsState = {
       draft: !!d.draft, open: d.state === "open", merged: !!d.merged,
       id: d.node_id, sha: d.head.sha, base: d.base.ref,
-      dirty: d.mergeable_state === "dirty", behind: behind
+      dirty: d.mergeable_state === "dirty", behind: behind, loading: false
     };
     if (!keepMsg) opsMsg = "";
     paintOps();
   } catch (e) {
     if (opsFor !== pr) return;
-    opsState = null;
-    opsMsg = e.status === 404
-      ? '<span class="ng">この PR が見つかりません。消されたか、権限が変わっています。</span>'
-      : '<span class="ng">状態を読めませんでした（' + esc(e.message) + "）。</span>";
+    if (e.status === 404) {
+      // PR そのものが無い。行が知っていたことも当てにならないので、全部落とす
+      opsState = null;
+      opsMsg = '<span class="ng">この PR が見つかりません。消されたか、権限が変わっています。</span>';
+    } else {
+      // 読めなかったのは「行が知らない分」だけ。draft かどうかは欄で分かっていて
+      // 調べものの成否とは関係ないので、トグルは押せるまま残す
+      opsState = { ...opsState, loading: false, behind: null };
+      opsMsg = '<span class="ng">base からの遅れを読めませんでした（' + esc(e.message) + "）。</span>";
+    }
     paintOps();
   }
 }
@@ -2612,6 +2708,7 @@ function opsTitle(act) {
     return s.draft ? "いまは draft — 押すと解除してレビューに出す"
                    : "draft ではない — 押すと draft に戻す";
   }
+  if (s.loading) return "base からどれだけ遅れているか、いま調べている";
   if (s.dirty) return "コンフリクトがある。update branch は base を取り込む操作なので、これでは解けない";
   if (s.behind === null) return "base より遅れているかを読めなかった";
   if (s.behind > 0) return "base（" + s.base + "）より " + s.behind + " コミット遅れ";
@@ -2655,8 +2752,12 @@ const OPS_WORDS = {
   update: { doing: "base を取り込んでいます…", done: "base を取り込みました。", ng: "base を取り込めませんでした" }
 };
 
-/* 実行。走っているあいだは全部押せなくする —— 二度押しで
-   同じ mutation が2回飛ぶと、2回目は「もう draft だ」で失敗になる */
+/* 短い名前。下の行に出す用（modal の中は OPS_WORDS のほうを使う） */
+const OPS_LABEL = { ready: "draft 解除", draft: "draft 化", update: "update branch" };
+
+/* 実行。走っているあいだ modal の中は押せなくするが、閉じるのは止めない ——
+   相手は GitHub で、こちらが見ているかどうかとは関係なく進む。
+   閉じたあとの行方は opsJobs（画面の下の行）が引き受ける */
 async function runOps(btn, act) {
   const pr = opsFor;
   if (!pr) return;
@@ -2673,6 +2774,9 @@ async function runOps(btn, act) {
   const dir = act === "draft" ? (s.draft ? "ready" : "draft") : act;
   const word = OPS_WORDS[dir];
   const full = pr.base.repo.full_name;
+  const job = opsJobStart(pr, OPS_LABEL[dir]);
+  // 途中で閉じられた / 別の PR を開かれたら、modal 側は塗らない
+  const onScreen = () => opsOpen() && opsFor === pr;
 
   $("ops").classList.add("busy");
   $("opsrow").querySelectorAll("button").forEach((b) => { b.disabled = true; });
@@ -2680,20 +2784,34 @@ async function runOps(btn, act) {
   opsNote();
 
   try {
-    if (dir === "ready") await ghMutate(Q_TO_READY, { id: s.id });
-    else if (dir === "draft") await ghMutate(Q_TO_DRAFT, { id: s.id });
-    else await ghSend("PUT", "/repos/" + full + "/pulls/" + pr.number + "/update-branch",
-      { expected_head_sha: s.sha });
-    opsMsg = '<span class="yes">' + word.done + "</span>";
+    if (dir === "update") {
+      // sha は行が持っていない。調べものが終わるまでは update を押せないので、
+      // ここに来た時点で必ず入っている
+      await ghSend("PUT", "/repos/" + full + "/pulls/" + pr.number + "/update-branch",
+        { expected_head_sha: s.sha });
+    } else {
+      // draft の出し入れには node_id が要る。古いキャッシュから出ている行は
+      // 持っていないことがあるので、そのときだけ裏の調べものに追いつく
+      let id = s.id;
+      if (!id && opsLoad) { await opsLoad; id = opsState ? opsState.id : ""; }
+      if (!id) throw new Error("この PR の id を読めませんでした");
+      await ghMutate(dir === "ready" ? Q_TO_READY : Q_TO_DRAFT, { id: id });
+    }
+    opsJobEnd(job, true);
     // draft を切り替えるとレーンが変わる。盤面を出しっぱなしにはできない
     refresh();
+    if (!onScreen()) return;
+    opsMsg = '<span class="yes">' + word.done + "</span>";
     // 押せるものが変わる。取り直して塗り直す（結果の一言は残す）
-    await loadOps(pr, true);
+    opsLoad = loadOps(pr, true);
+    await opsLoad;
   } catch (e) {
+    opsJobEnd(job, false, e.message);
+    if (!onScreen()) return;
     opsMsg = '<span class="ng">' + word.ng + " — " + esc(e.message) + "</span>";
     paintOps();
   } finally {
-    $("ops").classList.remove("busy");
+    if (onScreen()) $("ops").classList.remove("busy");
   }
 }
 
