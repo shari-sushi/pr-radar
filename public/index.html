@@ -1861,13 +1861,6 @@ function selLanes() {
     lastBuckets && lastBuckets[l.id] && lastBuckets[l.id].length);
 }
 
-/* 見出しの操作（全選択 / コピー n件 / ×）を出すレーン。出ている先頭の1本だけ。
-   両方に出すと同じ数字が2か所に並び、「このレーンで3件」と読めてしまう。
-   先頭が盤面から消えたら、次のレーンへ自然に移る */
-function selHeadLane() {
-  return selLanes()[0] || null;
-}
-
 /* 選んだ PR を盤面の並び順で集める。盤面から落ちた行は数にも本文にも入れない
    —— 見えていないものを黙ってコピーしない */
 function selPrs() {
@@ -1897,8 +1890,8 @@ function closeSelect() {
 }
 
 /* レーンの出し入れやタブの移動のあとに呼ぶ。選ぶ対象が盤面から全部消えたら
-   やめる。1本でも残っていれば引き直す —— 見出しの操作は「出ている先頭の
-   レーン」に置くので、そこが消えたら次へ移さないと、操作だけがどこにも無くなる */
+   やめる。1本でも残っていれば引き直す —— 盤面から落ちた行のぶん、
+   どの見出しに出ている数も変わる */
 function syncSelect() {
   if (!selOn) return;
   if (!selLanes().length) { closeSelect(); return; }
@@ -1937,20 +1930,25 @@ function selActsHtml() {
 }
 
 /* 見出しの数とトグルの字だけ塗り替える。行は触らない ——
-   1件選ぶたびに引き直すと、押した場所からスクロールが飛ぶ */
-function paintSelHead() {
-  const head = selHeadLane();
-  if (!head) return;
-  const el = $("lane-" + head.id);
+   1件選ぶたびに引き直すと、押した場所からスクロールが飛ぶ。
+   操作はコピーできるレーンそれぞれの見出しに出るので、全部まとめて塗る。
+   出る数はどこも同じ「まとまり全体で何件か」—— レーンごとの数ではない */
+function paintSelHeads() {
   const n = selPrs().length;
-  const btn = el.querySelector(".docopy");
-  if (btn) { btn.textContent = "コピー " + n + "件"; btn.disabled = n === 0; }
-  const box = el.querySelector(".allbox");
-  if (box) box.checked = n > 0;
-  const lbl = el.querySelector(".pickall");
-  if (lbl) {
-    lbl.querySelector("span").textContent = n > 0 ? "全解除" : "全選択";
-    lbl.title = n > 0 ? "選択をすべて外す" : "出ている分をすべて選ぶ";
+  for (const lane of LANES) {
+    if (!lane.copy) continue;
+    const el = $("lane-" + lane.id);
+    const btn = el.querySelector(".docopy");
+    if (!btn) continue;   // このレーンは選択モードの見出しを出していない
+    btn.textContent = "コピー " + n + "件";
+    btn.disabled = n === 0;
+    const box = el.querySelector(".allbox");
+    if (box) box.checked = n > 0;
+    const lbl = el.querySelector(".pickall");
+    if (lbl) {
+      lbl.querySelector("span").textContent = n > 0 ? "全解除" : "全選択";
+      lbl.title = n > 0 ? "選択をすべて外す" : "出ている分をすべて選ぶ";
+    }
   }
 }
 
@@ -1961,8 +1959,6 @@ function renderLane(lane, prs, emptyMsg) {
   const canCopy = lane.copy && prs && prs.length > 0;
   // 選択中は、コピーできるレーンが全部まとめて選ぶ側に回る
   const sel = selOn && canCopy;
-  // ただし見出しの操作を出すのは、出ているレーンの先頭1本だけ
-  const head = sel && selHeadLane() && selHeadLane().id === lane.id;
 
   const rows = prs && prs.length
     ? prs.map((pr, i) => prRow(pr, i, sel)).join("")
@@ -1978,9 +1974,7 @@ function renderLane(lane, prs, emptyMsg) {
     '<div class="lane-body">' +
       '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
         (lane.sub ? '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" : "") +
-        (!canCopy ? ""
-          : sel ? (head ? '<span class="acts">' + selActsHtml() + "</span>" : "")
-                : '<span class="acts">' + copyActsHtml(lane) + "</span>") +
+        (canCopy ? '<span class="acts">' + (sel ? selActsHtml() : copyActsHtml(lane)) + "</span>" : "") +
       "</div>" +
       rows + more +
     "</div>";
@@ -2035,8 +2029,8 @@ function renderLane(lane, prs, emptyMsg) {
         row.classList.toggle("picked", on);
         const box = row.querySelector(".pick input");
         if (box) box.checked = on;
-        // 数は別のレーンの見出しに出ていることがある。場所は paintSelHead が知っている
-        paintSelHead();
+        // 数はどのレーンの見出しにも出ているので、まとめて塗り直す
+        paintSelHeads();
       };
     });
 
