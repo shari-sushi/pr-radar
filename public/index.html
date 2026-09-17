@@ -219,14 +219,26 @@
   .ops-btn[disabled], .ops-btn[disabled]:hover {
     color: var(--faint); border-color: var(--line); background: none; cursor: default;
   }
-  /* draft は「いまそうなっているか」がそのまま操作なので、2つ並べずトグル1つ。
-     押されている色は .tgl に任せる（1か所で持つ方針）。ここで揃えるのは大きさだけ。
-     絞り込みのトグルと同じ語彙で読める —— 押されている＝そうなっている。
-     「待ち」や「closed」を .tgl に寄せていないのは、あちらは
-     押されている＝盤面から外している、と意味が逆だから */
-  .ops-row .tgl { padding: 5px 10px; }
-  .ops-row .tgl[disabled], .ops-row .tgl[disabled]:hover {
-    color: var(--faint); border-color: var(--line); background: none; cursor: default;
+  /* draft かどうかは2択。2つの区画をつなげて1つのスイッチに見せ、
+     いまそうなっている側を塗る。絞り込みの .tgl とは別物 ——
+     あちらは1つで on/off、こちらは2つで「今どちらか」を見せる */
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .seg-btn {
+    border: 0; border-radius: 0; background: var(--panel); color: var(--dim);
+    padding: 5px 14px; white-space: nowrap; text-transform: none; letter-spacing: .02em;
+  }
+  .seg-btn + .seg-btn { box-shadow: inset 1px 0 0 var(--line); }
+  .seg-btn[aria-pressed="false"]:hover { color: var(--ink); background: var(--panel-hi); border: 0; }
+  /* 選ばれている側。押しても何も起きないので、指も立てない */
+  .seg-btn[aria-pressed="true"],
+  .seg-btn[aria-pressed="true"]:hover {
+    background: #1F2724; color: var(--panel); border: 0; cursor: default;
+  }
+  .seg-btn[disabled], .seg-btn[disabled]:hover {
+    color: var(--faint); background: var(--panel); border: 0; cursor: default;
+  }
+  .seg-btn[disabled][aria-pressed="true"], .seg-btn[disabled][aria-pressed="true"]:hover {
+    color: var(--panel); background: #5C6664;
   }
   .ops-btn.done { color: var(--ready); border-color: var(--ready); }
   .ops-btn.fail { color: var(--review); border-color: var(--review); }
@@ -2704,15 +2716,21 @@ function opsTitle(act) {
   if (act === "copy") return "この PR 1件を、一覧と同じ書式でコピー";
   if (!s) return "状態を読めていない";
   if (!s.open) return s.merged ? "merge 済みの PR" : "閉じた PR";
-  if (act === "draft") {
-    return s.draft ? "いまは draft — 押すと解除してレビューに出す"
-                   : "draft ではない — 押すと draft に戻す";
-  }
   if (s.loading) return "base からどれだけ遅れているか、いま調べている";
   if (s.dirty) return "コンフリクトがある。update branch は base を取り込む操作なので、これでは解けない";
   if (s.behind === null) return "base より遅れているかを読めなかった";
   if (s.behind > 0) return "base（" + s.base + "）より " + s.behind + " コミット遅れ";
   return "base に追いついている";
+}
+
+/* 2択のどちらの区画に出す一言か。選ばれている側は今の状態、
+   選ばれていない側は押したら何が起きるか */
+function opsSegTitle(to) {
+  const s = opsState;
+  if (!s) return "状態を読めていない";
+  if (!s.open) return s.merged ? "merge 済みの PR" : "閉じた PR";
+  if ((to === "draft") === s.draft) return to === "draft" ? "いまは draft" : "いまは draft ではない";
+  return to === "draft" ? "押すと draft に戻す" : "押すと解除してレビューに出す";
 }
 
 /* 下の行は、押したあとの進捗と結果だけを出す。何もしていないときは空 */
@@ -2728,11 +2746,16 @@ function paintOps() {
   // 遅れの数はボタンに出す。押せるかどうかだけでは、どれだけ遅れているかが出ない
   const behind = live && s.behind > 0 ? s.behind : 0;
 
+  // 塗られている側がいまの状態。もう一方を押すとそちらへ動く
+  const seg = (to, label) =>
+    '<button class="seg-btn" type="button" data-act="draft" data-to="' + to + '"' +
+      ' aria-pressed="' + String(!!(live && (to === "draft") === s.draft)) + '"' +
+      (live ? "" : " disabled") + ' title="' + esc(opsSegTitle(to)) + '">' + label + "</button>";
+
   $("opsrow").innerHTML =
-    // 押されている＝いま draft。押すとその状態が反転する
-    '<button class="ops-btn tgl" type="button" data-act="draft"' +
-      ' aria-pressed="' + String(!!(live && s.draft)) + '"' + (live ? "" : " disabled") +
-      ' title="' + esc(opsTitle("draft")) + '">draft</button>' +
+    '<span class="seg" role="group" aria-label="draft かどうか">' +
+      seg("draft", "draft") + seg("ready", "not draft") +
+    "</span>" +
     btn("update", "update branch" + (behind ? " · " + behind : ""), !!(live && !s.dirty && behind)) +
     // コピーは PR を変えない。状態が読めなくても押せる
     btn("copy", "この1件をコピー", true, "ops-copy");
@@ -2770,8 +2793,10 @@ async function runOps(btn, act) {
 
   const s = opsState;
   if (!s) return;
-  // draft はトグル1つなので、どちらへ動かすかは今の状態から決まる
-  const dir = act === "draft" ? (s.draft ? "ready" : "draft") : act;
+  // draft は2択。どちらへ動かすかは押された区画が持っている
+  const dir = act === "draft" ? btn.dataset.to : act;
+  // すでにその状態なら何もしない —— 塗られている側を押しただけ
+  if (act === "draft" && (dir === "draft") === !!s.draft) return;
   const word = OPS_WORDS[dir];
   const full = pr.base.repo.full_name;
   const job = opsJobStart(pr, OPS_LABEL[dir]);
