@@ -1234,6 +1234,36 @@ const prKey = (pr) => pr.base.repo.full_name + "#" + pr.number;
 
 const labelOf = (pr) => labels[prKey(pr)] || LABELS.IN;
 
+/* こちらで直したばかりの draft。GitHub の一覧（/pulls）は書き込んだ直後
+   しばらく前の値を返すことがあり、それをそのまま描くと、直したはずの PR が
+   元のレーンに座ったままになる。ここに置いたぶんは、取り直した結果より
+   優先して描く。一覧が追いついたら（同じ値を返してきたら）捨てる。
+   保存はしない —— 開き直せば、そのとき取り直したものが正 */
+let draftPatch = {};   // prKey -> { draft, until }
+const DRAFT_PATCH_MS = 5 * 60 * 1000;   // 追いつかないまま当て続けないための止め
+
+const draftOf = (pr) => {
+  const p = draftPatch[prKey(pr)];
+  return p ? p.draft : !!pr.draft;
+};
+
+function setDraftPatch(pr, draft) {
+  draftPatch[prKey(pr)] = { draft: !!draft, until: Date.now() + DRAFT_PATCH_MS };
+}
+
+/* 取り直した結果がこちらと一致したら、当てるのをやめる。
+   比べるのは API が返した生の値 —— 当てたあとの値ではない（当てた値と
+   比べると、いつでも一致して1回目で捨ててしまう） */
+function sweepDraftPatch() {
+  for (const item of fetched || []) {
+    const key = prKey(item.pr);
+    const p = draftPatch[key];
+    if (p && !!item.pr.draft === p.draft) delete draftPatch[key];
+  }
+  const now = Date.now();
+  for (const key in draftPatch) if (now > draftPatch[key].until) delete draftPatch[key];
+}
+
 function setLabel(pr, value) {
   if (value === LABELS.IN) delete labels[prKey(pr)];
   else labels[prKey(pr)] = value;
@@ -1721,7 +1751,7 @@ function laneOf(pr, me, listed, ours) {
   const reviewers = (pr.requested_reviewers || []).map((u) => u.login.toLowerCase());
   // 自分宛のレビュー依頼だけはチェックと無関係。誰が出した PR でも必ず拾う
   if (me && reviewers.includes(me)) return "review";
-  if (ours.has(author)) return pr.draft ? "draft" : "ready";
+  if (ours.has(author)) return draftOf(pr) ? "draft" : "ready";
   // 一覧に居てチェックを外した人は「見ない」という意思表示なので落とす。
   // 一覧に載せていない人は意思表示が無いだけなので「ほかの人のPR」に回す
   if (listed.has(author)) return null;
@@ -1732,6 +1762,7 @@ function laneOf(pr, me, listed, ours) {
    author の振り分けもここでやる。取り直さずにチェックへ即応させるため */
 function renderBoard() {
   if (!fetched && !fetchedClosed) return;
+  sweepDraftPatch();
   const me = (cfg.me || "").toLowerCase();
   const listed = new Set(peopleList().map((p) => p.key));               // Author 欄に並んでいる人
   const ours = new Set([...listed].filter((k) => !peopleOff.has(k)));   // うちチェックが入っている人
@@ -2224,7 +2255,7 @@ function prCard(pr) {
       ? '<span class="chip merged">merged</span>'
       : '<span class="chip shut">closed</span>');
   } else {
-    if (pr.draft) chips.push('<span class="chip draft">draft</span>');
+    if (draftOf(pr)) chips.push('<span class="chip draft">draft</span>');
     if (age >= 14) chips.push('<span class="chip rot">' + age + "日 停滞</span>");
     else if (age >= 7) chips.push('<span class="chip stale">' + age + "日 停滞</span>");
   }
@@ -2568,7 +2599,7 @@ const opsOpen = () => !$("opsscrim").hidden;
    —— loading を立てて「読めなかった」と区別する */
 function seedOps(pr) {
   return {
-    draft: !!pr.draft,
+    draft: draftOf(pr),
     // 待ち・下書きの欄に居る時点で open。閉じたものは closed の欄にしか出ない
     open: pr.state ? pr.state === "open" : true,
     merged: !!pr.merged_at,
@@ -2669,8 +2700,11 @@ async function loadOps(pr, keepMsg) {
     }
     // 待っているあいだに閉じられた / 別の行を開かれたら、もう塗らない
     if (opsFor !== pr) return;
+    const patch = draftPatch[prKey(pr)];
     opsState = {
-      draft: !!d.draft, open: d.state === "open", merged: !!d.merged,
+      // 単体の GET も一覧と同じで、書いた直後は前の値のことがある
+      draft: patch ? patch.draft : !!d.draft,
+      open: d.state === "open", merged: !!d.merged,
       id: d.node_id, sha: d.head.sha, base: d.base.ref,
       dirty: d.mergeable_state === "dirty", behind: behind, loading: false
     };
@@ -2775,6 +2809,19 @@ const OPS_WORDS = {
   update: { doing: "base を取り込んでいます…", done: "base を取り込みました。", ng: "base を取り込めませんでした" }
 };
 
+/* 書いたあと、一覧が追いつくまで取り直す。1回引いて決めつけない ——
+   その1回が前の値だと、次の自動更新まで（既定では window に戻って1時間）
+   直したものが元のレーンに座ったままになる。
+   当てているぶん（draftPatch）が消えたら、追いついたということ */
+async function settleDraft(pr) {
+  const key = prKey(pr);
+  for (const wait of [0, 3000, 10000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    if (!draftPatch[key]) return;
+    try { await refresh(); } catch (e) { return; }
+  }
+}
+
 /* 短い名前。下の行に出す用（modal の中は OPS_WORDS のほうを使う） */
 const OPS_LABEL = { ready: "draft 解除", draft: "draft 化", update: "update branch" };
 
@@ -2823,8 +2870,15 @@ async function runOps(btn, act) {
       await ghMutate(dir === "ready" ? Q_TO_READY : Q_TO_DRAFT, { id: id });
     }
     opsJobEnd(job, true);
-    // draft を切り替えるとレーンが変わる。盤面を出しっぱなしにはできない
-    refresh();
+    if (dir === "update") {
+      refresh();
+    } else {
+      // 先に盤面を動かす。GitHub 側の一覧が追いつくのを待ってからにすると、
+      // 直したのにレーンが変わらない時間ができる
+      setDraftPatch(pr, dir === "draft");
+      renderBoard();
+      settleDraft(pr);
+    }
     if (!onScreen()) return;
     opsMsg = '<span class="yes">' + word.done + "</span>";
     // 押せるものが変わる。取り直して塗り直す（結果の一言は残す）
