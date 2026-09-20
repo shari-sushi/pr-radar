@@ -45,6 +45,15 @@
   }
 
   .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 18px 64px; }
+  /* 盤面の幅。3つから選ぶ。default は上の .wrap のまま */
+  body[data-width="almost-full"] .wrap {
+    max-width: none; padding-left: 26px; padding-right: 26px;
+  }
+  body[data-width="w-narrow"] .wrap { max-width: 460px; }
+  /* 2列に割るかどうかは画面の幅で決めている（@media）。狭い幅を選ぶと
+     画面が広くても器が狭いので、そのままでは2列が 200px ずつに潰れる。
+     器の側で打ち消す —— 属性＋class＋要素で @media の .board / .board.one より強い */
+  body[data-width="w-narrow"] .board { grid-template-columns: 1fr; }
 
   /* ---------- masthead ---------- */
   .top {
@@ -485,6 +494,12 @@
     writing-mode: vertical-rl; text-orientation: upright;
     font-size: 12px; font-weight: 700; letter-spacing: .28em;
   }
+  /* 英字の rail は寝かせて読ませる。upright のままだと1文字ずつ立ち、
+     un-select なら9文字ぶんの高さになって、行の少ないレーンより高くなる */
+  .rail .lbl.en {
+    text-orientation: sideways; letter-spacing: .04em;
+    font-family: var(--mono); font-size: 11px;
+  }
 
   .lane-body { min-width: 0; }
   .lane-head {
@@ -923,13 +938,20 @@
         <span class="hint" id="dayout"></span>
       </div>
       <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-memodelay">メモの吹き出し<span class="caret"></span></button>
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-memodelay">tool-tip の表示待ち<span class="caret"></span></button>
         <div class="slider">
-          <input id="memodelay" type="range" min="0" step="1" aria-label="メモの吹き出しが出るまで">
+          <input id="memodelay" type="range" min="0" step="1" aria-label="tool-tip が出るまでの待ち時間">
           <span class="val" id="memodelayout"></span>
         </div>
         <div class="fold" id="f-memodelay" hidden>
-          <span class="hint">メモのボタンにホバーしてから吹き出しが出るまで。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。</span>
+          <span class="hint">メモのボタンに hover してから tool-tip が出るまでの待ち時間。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。日付の tool-tip は 0.1 秒固定で、ここには連動しない。</span>
+        </div>
+      </div>
+      <div class="field">
+        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-width">盤面の幅<span class="caret"></span></button>
+        <div class="repo-toggles" id="widthfilter"></div>
+        <div class="fold" id="f-width" hidden>
+          <span class="hint">3つから選ぶ。数字は持たない —— 詰めたい幅は画面ごとに違うので、決めた形から選ぶほうが早い。押した時点で保存される。</span>
         </div>
       </div>
     </section>
@@ -1079,15 +1101,17 @@ const LANES = [
     legend: true, copy: true, post: true },
   // 下書きも一覧のコピーは持つ。レビュー依頼の文面（post）は出す前の PR には要らないので付けない
   { id: "draft",  rail: "下書",   title: "Draft", copy: true },
-  { id: "review", rail: "依頼",   title: "Review Requested" },
+  // requested されたのは自分。英語としては to me ではなく from me が座る
+  { id: "review", rail: "依頼",     title: "Requested from me" },
   // 追う人の一覧には居るが、チェックを外している人。以前は落としていたが、
   // 「見ない」と「居ない」は別 —— 外した人の PR も、別の欄になら出す
-  { id: "off",    rail: "解除",   title: "選択解除author" },
-  { id: "other",  rail: "未登録", title: "未登録author" },
+  { id: "off",    rail: "un-select", title: "un-select author" },
+  // 実体は「追う人の一覧に載っていない」。unregistered より unlisted が近い
+  { id: "other",  rail: "unlisted", title: "unlisted author" },
   // closed も「誰の PR か」で2本に分ける。もっと見るは取得を1ページ進めるもので、
   // 増えるのは両方のレーンなので、どちらの末尾にも置く
   { id: "closed",       rail: "閉",     title: "Closed",      tab: "closed", paged: true },
-  { id: "closed-other", rail: "未登録", title: "未登録author", tab: "closed", paged: true }
+  { id: "closed-other", rail: "unlisted", title: "unlisted author", tab: "closed", paged: true }
 ];
 /* tab を書いていないものは open。既定のタブに寄せておく */
 for (const l of LANES) if (!l.tab) l.tab = "open";
@@ -1615,7 +1639,36 @@ let showUnmerged = true;
    保存が無いとき・保存が読めないときの落とし所が3か所あるので、
    数字を散らさずここ1つにする */
 const DEFAULT_DELAY = 0.1;
-let memoDelay = DEFAULT_DELAY;   // メモの吹き出しが出るまでの秒数
+let memoDelay = DEFAULT_DELAY;   // メモの tool-tip が出るまでの待ち時間（秒）
+
+/* 盤面の幅。数字ではなく決めた形から選ぶ。id はそのまま view に入る */
+const WIDTHS = [
+  { id: "default",     hint: "1280px で中央に寄せる（いままでと同じ）" },
+  { id: "almost-full", hint: "画面いっぱい。左右に padding だけ残す" },
+  { id: "w-narrow",    hint: "スマホくらいの幅。画面が広くても1列に畳む" }
+];
+let boardWidth = "default";
+
+const applyWidth = () => { document.body.dataset.width = boardWidth; };
+
+/* 3つのうち1つ。押されているものを押しても外れない —— 幅なしにはならない */
+function renderWidths() {
+  const box = $("widthfilter");
+  box.textContent = "";
+  for (const w of WIDTHS) {
+    box.append(toggleBtn({
+      label: w.id,
+      title: w.hint,
+      on: boardWidth === w.id,
+      toggle: () => {
+        boardWidth = w.id;
+        applyWidth();
+        renderWidths();
+        saveView();
+      }
+    }));
+  }
+}
 
 /* つまみの目盛り。1秒までは 0.1 刻み、そこから上は 0.5 刻み。
    刻みが一様でないので range の step では表せない。つまみにはこの配列の
@@ -1667,6 +1720,8 @@ function loadView() {
   laneOff = new Set(strings(view.laneOff));
   activeTab = view.tab === "closed" ? "closed" : "open";   // 知らない値は open に倒す
   memoDelay = snapDelay(view.memoDelay);
+  // 知らない値は default に倒す
+  boardWidth = WIDTHS.some((w) => w.id === view.width) ? view.width : "default";
   // 以前は設定側（cfg.off / cfg.hidden）に置いていた。残っていれば一度だけ
   // 引き継ぎ、以後は view だけを見る
   peopleOff = new Set(strings(Array.isArray(view.off) ? view.off : cfg.off));
@@ -1678,7 +1733,7 @@ function loadView() {
 
 function saveView() {
   writeJson(VIEW_KEY, {
-    showOut, showWaiting, showMerged, showUnmerged, memoDelay,
+    showOut, showWaiting, showMerged, showUnmerged, memoDelay, width: boardWidth,
     off: [...peopleOff], hidden: [...hiddenRepos], laneOff: [...laneOff], tab: activeTab
   });
 }
@@ -2042,7 +2097,9 @@ function renderLane(lane, prs, emptyMsg) {
   const el = $("lane-" + lane.id);
 
   el.innerHTML =
-    '<div class="rail"><span class="n">' + (prs ? n : "–") + '</span><span class="lbl">' + lane.rail + "</span></div>" +
+    '<div class="rail"><span class="n">' + (prs ? n : "–") + "</span>" +
+      // 英字か日本語かで縦書きの向きが変わる。判定はここ1か所で持つ
+      '<span class="lbl' + (/^[!-~]+$/.test(lane.rail) ? " en" : "") + '">' + lane.rail + "</span></div>" +
     '<div class="lane-body">' +
       '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
         (lane.sub ? '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" : "") +
@@ -2474,6 +2531,8 @@ function fillForm() {
   $("memodelay").max = DELAY_STEPS.length - 1;   // 目盛りの数は配列で決める
   $("memodelay").value = delayIndex(memoDelay);
   applyMemoDelay();
+  applyWidth();
+  renderWidths();
   renderPeople();
   renderRepoFilter();
   renderLaneFilter();
