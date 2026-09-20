@@ -1001,6 +1001,7 @@
     </div>
     <!-- 他の人の PR。眺めるだけの列 -->
     <div class="col">
+      <section class="lane" id="lane-off" style="--c:var(--other)"></section>
       <section class="lane" id="lane-other" style="--c:var(--other)"></section>
       <section class="lane" id="lane-closed-other" style="--c:var(--other)"></section>
     </div>
@@ -1079,11 +1080,14 @@ const LANES = [
   // 下書きも一覧のコピーは持つ。レビュー依頼の文面（post）は出す前の PR には要らないので付けない
   { id: "draft",  rail: "下書",   title: "Draft", copy: true },
   { id: "review", rail: "依頼",   title: "Review Requested" },
-  { id: "other",  rail: "他",     title: "Other Authors" },
+  // 追う人の一覧には居るが、チェックを外している人。以前は落としていたが、
+  // 「見ない」と「居ない」は別 —— 外した人の PR も、別の欄になら出す
+  { id: "off",    rail: "解除",   title: "選択解除author" },
+  { id: "other",  rail: "未登録", title: "未登録author" },
   // closed も「誰の PR か」で2本に分ける。もっと見るは取得を1ページ進めるもので、
   // 増えるのは両方のレーンなので、どちらの末尾にも置く
-  { id: "closed",       rail: "閉",   title: "Closed",        tab: "closed", paged: true },
-  { id: "closed-other", rail: "他",   title: "Other Authors", tab: "closed", paged: true }
+  { id: "closed",       rail: "閉",     title: "Closed",      tab: "closed", paged: true },
+  { id: "closed-other", rail: "未登録", title: "未登録author", tab: "closed", paged: true }
 ];
 /* tab を書いていないものは open。既定のタブに寄せておく */
 for (const l of LANES) if (!l.tab) l.tab = "open";
@@ -1752,9 +1756,9 @@ function laneOf(pr, me, listed, ours) {
   // 自分宛のレビュー依頼だけはチェックと無関係。誰が出した PR でも必ず拾う
   if (me && reviewers.includes(me)) return "review";
   if (ours.has(author)) return draftOf(pr) ? "draft" : "ready";
-  // 一覧に居てチェックを外した人は「見ない」という意思表示なので落とす。
-  // 一覧に載せていない人は意思表示が無いだけなので「ほかの人のPR」に回す
-  if (listed.has(author)) return null;
+  // 一覧に居てチェックを外した人は、自分の欄からは外すが盤面からは落とさない。
+  // 一覧に載せていない人は、そもそも意思表示が無いので別の欄に回す
+  if (listed.has(author)) return "off";
   return "other";
 }
 
@@ -1767,7 +1771,7 @@ function renderBoard() {
   const listed = new Set(peopleList().map((p) => p.key));               // Author 欄に並んでいる人
   const ours = new Set([...listed].filter((k) => !peopleOff.has(k)));   // うちチェックが入っている人
 
-  const buckets = { ready: [], draft: [], review: [], other: [], closed: [], "closed-other": [] };
+  const buckets = { ready: [], draft: [], review: [], off: [], other: [], closed: [], "closed-other": [] };
   for (const item of fetched || []) {
     if (hiddenRepos.has(item.repo)) continue;
     if (!showOut && labelOf(item.pr) === LABELS.OUT) continue;
