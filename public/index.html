@@ -612,6 +612,32 @@
   }
   .wait-tag:hover { color: var(--ink); }
   .wait-tag:has(input:checked) { color: var(--ink); }
+
+  /* ---------- 遅延つきの吹き出し（共通） ---------- */
+  /* title 属性はブラウザ任せで、出るまでの時間も消えるまでの時間も場所ごとに
+     バラバラになる（設定の待ち時間を変えても効かない場所ができる）。同じ
+     待ち時間（--memo-delay）で出したいものは全部これに乗せる。乗せる側は
+     class に tip を足し、本文を data-tip に持たせるだけでよい。
+     待ち時間を変えたい場所だけ transition-delay を個別に上書きする */
+  .tip { position: relative; }
+  .tip[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5;
+    width: max-content; max-width: 320px;
+    white-space: pre-wrap; overflow-wrap: anywhere; text-align: left;
+    font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    letter-spacing: 0; text-transform: none;
+    color: var(--panel); background: rgba(14, 26, 34, .93);
+    border-radius: 3px; padding: 5px 8px;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .12s, visibility .12s; transition-delay: 0s;
+  }
+  /* 遅延は出るときだけ。離したら待たずに消える */
+  .tip[data-tip]:hover::after,
+  .tip[data-tip]:focus-visible::after {
+    opacity: 1; visibility: visible; transition-delay: var(--memo-delay);
+  }
+
   .memo-tag {
     display: inline-flex; padding: 5px; line-height: 0;
     border: 0; border-radius: 3px; background: transparent;
@@ -622,28 +648,13 @@
   .memo-tag:hover { color: var(--ink); background: #EDF1F2; border: 0; }
   /* 書いてあるかどうかは、開かなくても分かるようにしておく。
      15px のアイコンだと線の色差は読み取りにくいので、地色のほうを変える */
-  .memo-tag.has { background: #D5EBE3; position: relative; }
+  .memo-tag.has { background: #D5EBE3; }
   .memo-tag.has:hover { background: #C2E0D5; color: var(--ink); }
-  /* メモの中身を出す吹き出し。title 属性だと出るまでの時間も消えるまでの
-     時間もブラウザ任せで、長い本文が読み切る前に落ちるので自前で持つ */
-  .memo-tag[data-memo]::after {
-    content: attr(data-memo);
-    position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 5;
-    width: max-content; max-width: 400px;
-    white-space: pre-wrap; overflow-wrap: anywhere; text-align: left;
-    /* 読ませる文なので、盤面の文字（11px）より一回り大きくする。
-       幅も同じ比で広げて、1行に入る文字数を変えない */
-    font-family: var(--mono); font-size: 14px; line-height: 1.55;
-    letter-spacing: 0; text-transform: none;
-    color: var(--panel); background: rgba(14, 26, 34, .93);
-    border-radius: 3px; padding: 7px 9px;
-    opacity: 0; visibility: hidden; pointer-events: none;
-    transition: opacity .12s, visibility .12s; transition-delay: 0s;
-  }
-  /* 遅延は出るときだけ。離したら待たずに消える */
-  .memo-tag[data-memo]:hover::after,
-  .memo-tag[data-memo]:focus-visible::after {
-    opacity: 1; visibility: visible; transition-delay: var(--memo-delay);
+  /* メモの中身を出す吹き出し。読ませる文なので、盤面の文字（11px）より
+     一回り大きくする。幅も同じ比で広げて、1行に入る文字数を変えない */
+  .memo-tag.tip[data-tip]::after {
+    right: 0; left: auto;
+    max-width: 400px; font-size: 14px; padding: 7px 9px;
   }
   .scope-tag {
     display: inline-flex; padding: 5px; line-height: 0;
@@ -713,24 +724,13 @@
     padding-right: 122px;
   }
   .pr .m .sep { color: var(--line); }
-  /* 作成日時・最終更新の吹き出し。title 属性だと出るまで1秒近く待たされ、
-     待ち時間もブラウザ任せなので、メモと同じやり方で自前に持つ。
-     こちらは短い1行を「見た瞬間に読む」ものなので、遅延は 0.1 秒に固定して
+  /* 作成日時・最終更新の吹き出し。共通の .tip に乗せるが、こちらは短い1行を
+     「見た瞬間に読む」ものなので、遅延だけ 0.1 秒に固定して
      設定（--memo-delay）とは連動させない */
-  .pr .m .when { position: relative; }
-  .pr .m .when[data-when]::after {
-    content: attr(data-when);
-    position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5;
-    width: max-content; max-width: 320px;
-    white-space: pre-wrap; text-align: left;
-    font-family: var(--mono); font-size: 12px; line-height: 1.5; letter-spacing: 0;
-    color: var(--panel); background: rgba(14, 26, 34, .93);
-    border-radius: 3px; padding: 5px 8px;
-    opacity: 0; visibility: hidden; pointer-events: none;
-    transition: opacity .12s, visibility .12s; transition-delay: 0s;
+  .pr .m .when.tip[data-tip]:hover::after,
+  .pr .m .when.tip[data-tip]:focus-visible::after {
+    transition-delay: .1s;
   }
-  /* 遅延は出るときだけ。離したら待たずに消える */
-  .pr .m .when[data-when]:hover::after { opacity: 1; visibility: visible; transition-delay: .1s; }
   /* コメント数。0 は薄くして、付いているものだけが目に入るようにする */
   .pr .m .cnt {
     display: inline-flex; gap: 8px; font-variant-numeric: tabular-nums;
@@ -949,9 +949,12 @@
       </div>
       <div class="field">
         <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-width">盤面の幅<span class="caret"></span></button>
-        <div class="repo-toggles" id="widthfilter"></div>
+        <span class="hint">1列で出ているとき</span>
+        <div class="repo-toggles" id="widthfilter-one"></div>
+        <span class="hint">2列で出ているとき</span>
+        <div class="repo-toggles" id="widthfilter-two"></div>
         <div class="fold" id="f-width" hidden>
-          <span class="hint">3つから選ぶ。数字は持たない —— 詰めたい幅は画面ごとに違うので、決めた形から選ぶほうが早い。押した時点で保存される。</span>
+          <span class="hint">3つから選ぶ。数字は持たない —— 詰めたい幅は画面ごとに違うので、決めた形から選ぶほうが早い。押した時点で保存される。レーンが1本だけのとき・2本とも出ているときで別々に覚える。</span>
         </div>
       </div>
     </section>
@@ -1643,27 +1646,37 @@ let memoDelay = DEFAULT_DELAY;   // メモの tool-tip が出るまでの待ち�
 
 /* 盤面の幅。数字ではなく決めた形から選ぶ。id はそのまま view に入る */
 const WIDTHS = [
+  { id: "w-narrow",    hint: "スマホくらいの幅。画面が広くても1列に畳む" },
   { id: "default",     hint: "1280px で中央に寄せる（いままでと同じ）" },
-  { id: "almost-full", hint: "画面いっぱい。左右に padding だけ残す" },
-  { id: "w-narrow",    hint: "スマホくらいの幅。画面が広くても1列に畳む" }
+  { id: "almost-full", hint: "画面いっぱい。左右に padding だけ残す" }
 ];
-let boardWidth = "default";
+let widthOne = "default";  // レーンが1本だけ出ているときの幅
+let widthTwo = "default";  // レーンが2本とも出ているときの幅
 
-const applyWidth = () => { document.body.dataset.width = boardWidth; };
+/* いま盤面が1列か2列かは syncLanes が #board に付ける .one クラスで分かる。
+   幅はその結果を見てから選ぶ —— 先に決め打つと1列/2列が逆転した瞬間に古い幅が残る */
+const applyWidth = () => {
+  document.body.dataset.width = $("board").classList.contains("one") ? widthOne : widthTwo;
+};
 
-/* 3つのうち1つ。押されているものを押しても外れない —— 幅なしにはならない */
+/* 3つのうち1つ。押されているものを押しても外れない —— 幅なしにはならない。
+   1列のとき・2列のときで別々に覚えるので、面を2つ描く */
 function renderWidths() {
-  const box = $("widthfilter");
+  renderWidthGroup($("widthfilter-one"), "one");
+  renderWidthGroup($("widthfilter-two"), "two");
+}
+
+function renderWidthGroup(box, which) {
   box.textContent = "";
   for (const w of WIDTHS) {
     box.append(toggleBtn({
       label: w.id,
       title: w.hint,
-      on: boardWidth === w.id,
+      on: (which === "one" ? widthOne : widthTwo) === w.id,
       toggle: () => {
-        boardWidth = w.id;
+        if (which === "one") widthOne = w.id; else widthTwo = w.id;
         applyWidth();
-        renderWidths();
+        renderWidthGroup(box, which);
         saveView();
       }
     }));
@@ -1720,8 +1733,11 @@ function loadView() {
   laneOff = new Set(strings(view.laneOff));
   activeTab = view.tab === "closed" ? "closed" : "open";   // 知らない値は open に倒す
   memoDelay = snapDelay(view.memoDelay);
-  // 知らない値は default に倒す
-  boardWidth = WIDTHS.some((w) => w.id === view.width) ? view.width : "default";
+  // 知らない値は default に倒す。1列/2列を分ける前の保存（view.width）が
+  // 残っていれば、両方の初期値として引き継ぐ
+  const legacyWidth = WIDTHS.some((w) => w.id === view.width) ? view.width : "default";
+  widthOne = WIDTHS.some((w) => w.id === view.widthOne) ? view.widthOne : legacyWidth;
+  widthTwo = WIDTHS.some((w) => w.id === view.widthTwo) ? view.widthTwo : legacyWidth;
   // 以前は設定側（cfg.off / cfg.hidden）に置いていた。残っていれば一度だけ
   // 引き継ぎ、以後は view だけを見る
   peopleOff = new Set(strings(Array.isArray(view.off) ? view.off : cfg.off));
@@ -1733,7 +1749,7 @@ function loadView() {
 
 function saveView() {
   writeJson(VIEW_KEY, {
-    showOut, showWaiting, showMerged, showUnmerged, memoDelay, width: boardWidth,
+    showOut, showWaiting, showMerged, showUnmerged, memoDelay, widthOne, widthTwo,
     off: [...peopleOff], hidden: [...hiddenRepos], laneOff: [...laneOff], tab: activeTab
   });
 }
@@ -1748,17 +1764,19 @@ function syncRepos() {
   renderBoard();
 }
 
-/* 押されている / いない を持つチップを1つ作る。repo・who・lane・曜日で共通。
+/* 押されている / いない を持つチップを1つ作る。repo・who・lane・曜日・幅で共通。
    色は CSS の .tgl が1か所で持ち、形と字は kind のクラスが足す。
    kind を渡さなければ .tgl の既定の形（角ばった小さい箱）で出る。
    on は「いま押されているか」、toggle は押したあとの値を受け取る。
-   中に何か足したいときは（who の「自分」の印など）返ったものに append する */
+   中に何か足したいときは（who の「自分」の印など）返ったものに append する。
+   title は素の title 属性にはしない —— ブラウザ任せの吹き出しになり、設定の
+   「tool-tip の表示待ち」が効かない場所ができてしまう。共通の .tip に乗せる */
 function toggleBtn({ label, kind, title, on, toggle, data }) {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = kind ? "tgl " + kind : "tgl";
+  b.className = (kind ? "tgl " + kind : "tgl") + (title ? " tip" : "");
   b.textContent = label;
-  if (title) b.title = title;
+  if (title) b.dataset.tip = title;
   if (data) for (const k in data) b.dataset[k] = data[k];
   b.setAttribute("aria-pressed", String(on));
   b.onclick = () => toggle(b.getAttribute("aria-pressed") !== "true");
@@ -1958,6 +1976,7 @@ function syncLanes() {
   const cols = [...document.querySelectorAll("#board > .col")];
   for (const col of cols) col.hidden = [...col.children].every((el) => el.hidden);
   $("board").classList.toggle("one", cols.filter((c) => !c.hidden).length === 1);
+  applyWidth();   // 1列/2列が入れ替わったら、その面の幅に描き直す
 }
 
 /* ---------- 選択してコピー ---------- */
@@ -2227,7 +2246,7 @@ function copyText(btn, icon, text, onDone) {
    出したばかりの PR に見えてしまい、黙って嘘をつくことになる */
 function whenHtml(pr) {
   const born = pr.created_at;
-  return '<span class="when" data-when="作成 ' + (born ? fullStamp(born) : "不明") +
+  return '<span class="when tip" data-tip="作成 ' + (born ? fullStamp(born) : "不明") +
     "&#10;更新 " + fullStamp(pr.updated_at) + '">' +
     (born ? mmdd(born) : "--/--") + " - " + timeAgo(pr.updated_at) +
     "</span>";
@@ -2348,9 +2367,9 @@ function prRow(pr, i, sel) {
     (sel ? '<span class="pick"><input type="checkbox" tabindex="-1"' + (picked ? " checked" : "") + "></span>" : "") +
     prCard(pr) +
     '<div class="pr-actions">' +
-      '<button class="memo-tag' + (memo ? " has" : "") + '" type="button" data-i="' + i + '"' +
+      '<button class="memo-tag tip' + (memo ? " has" : "") + '" type="button" data-i="' + i + '"' +
         // 中身をそのままホバーに出す。開かずに読めるほうが速い。改行も残す
-        (memo ? ' data-memo="' + esc(memo) + '"' : ' title="メモを書く"') +
+        ' data-tip="' + esc(memo || "メモを書く") + '"' +
         ' aria-label="メモ">' +
         ICON_MEMO +
       "</button>" +
