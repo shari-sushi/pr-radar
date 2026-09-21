@@ -582,6 +582,12 @@
   .lane.sel .pr-row.picked { background: var(--panel-hi); box-shadow: inset 3px 0 0 var(--c); }
   .lane.sel .pr-row.picked:hover { background: #EDF1F2; }
 
+  /* who / repo のチップを hover したとき、対応するカードに同じ印を出す。
+     .picked と同じ組み（地色 + 左のレーン色）を使うが、選択中と衝突しないよう
+     .lane.sel の外だけに効かせる —— 選択中は pointer-events が止まっていて
+     このホバーと意味が競合しないため */
+  .pr-row.hi { background: var(--panel-hi); box-shadow: inset 3px 0 0 var(--c); }
+
   /* 行は器。リンクはタイトルだけ、チェックボックスは右下に浮かせる。
      カード全体をリンクにすると、チェックボックスを押しても PR が開いてしまう */
   .pr-row { position: relative; border-bottom: 1px solid #EDF0F1; }
@@ -1793,6 +1799,7 @@ function paintRepos(box, repos) {
       label: repo.split("/")[1] || repo,
       kind: "repo",
       title: repo,
+      data: { repo },
       on: !hiddenRepos.has(repo),
       toggle: (on) => {
         if (on) hiddenRepos.delete(repo);
@@ -2362,7 +2369,9 @@ function prRow(pr, i, sel) {
   const picked = sel && selKeys.has(prKey(pr));
 
   return '<div class="pr-row' + (inScope ? "" : " out") + (isWaiting(pr) ? " waiting" : "") +
-      (picked ? " picked" : "") + '" data-i="' + i + '">' +
+      (picked ? " picked" : "") + '" data-i="' + i +
+      '" data-repo="' + esc(pr.base.repo.full_name) +
+      '" data-author="' + esc((pr.user && pr.user.login || "").toLowerCase()) + '">' +
     // 選択中だけ出す印。押す相手は行そのものなので、これは的ではない
     (sel ? '<span class="pick"><input type="checkbox" tabindex="-1"' + (picked ? " checked" : "") + "></span>" : "") +
     prCard(pr) +
@@ -3407,6 +3416,27 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "r") refresh();
   if (e.key === "s") setSettings(!settingsOpen());
 });
+
+/* who / repo のチップを hover したら、対応するカードを光らせる。
+   チップは盤面の帯と設定の引き出しの2か所に出るので、個別に紐付けず
+   document で拾う。mouseenter/mouseleave は bubble しないが、capture 段階なら
+   祖先で拾えるので、それで一括して見る（mouseover/mouseout だと子要素との
+   出入りのたびに何度も発火して、揺らつく） */
+document.addEventListener("mouseenter", (e) => {
+  const chip = e.target.closest && e.target.closest(".who[data-person], .repo[data-repo]");
+  if (chip) hoverPrRows(chip, true);
+}, true);
+document.addEventListener("mouseleave", (e) => {
+  const chip = e.target.closest && e.target.closest(".who[data-person], .repo[data-repo]");
+  if (chip) hoverPrRows(chip, false);
+}, true);
+function hoverPrRows(chip, on) {
+  const attr = chip.classList.contains("who") ? "author" : "repo";
+  const val = attr === "author" ? chip.dataset.person : chip.dataset.repo;
+  if (!val) return;
+  document.querySelectorAll('.pr-row[data-' + attr + '="' + val.replace(/"/g, '\\"') + '"]')
+    .forEach((row) => row.classList.toggle("hi", on));
+}
 
 (async () => {
   // 印は鍵に依存しないので、最初のカードを描く前に読んでおく
