@@ -56,16 +56,20 @@
   body[data-width="w-narrow"] .board { grid-template-columns: 1fr; }
 
   /* ---------- masthead ---------- */
-  /* 幅が足りなくなったときに折り返すのは repo のチップだけ。題名・タブ・
-     更新・☰ は1行に残す —— 押す場所が幅しだいで行をまたいで動くと、
+  /* 1行に収まるあいだは 題名 / タブ / REPO / 状態 / 更新 / ☰ の並び。
+     入らなくなったら、下の行へ落とすのは repo の枠ごと1つだけで、
+     残りは1行目に置いたまま —— 押す場所が幅しだいで行をまたいで動くと、
      窓を広げ縮めするたびに探し直しになる。
-     そのために、縮められるのは repo の枠だけにして（ほかは flex: none）、
-     中のチップが自分の枠の中で折り返すようにする */
+     どこで落とすかは repo の名前の長さと数で決まるので、幅の決め打ち
+     （@media）ではなく、1行に並べたときの幅を測って .stack を付け外しする */
   .top {
     display: flex; align-items: baseline; gap: 14px; flex-wrap: nowrap;
     padding-bottom: 12px; margin-bottom: 14px;
     border-bottom: 2px solid var(--ink);
   }
+  .top.stack { flex-wrap: wrap; }
+  /* order で最後に回して、幅いっぱいの行にする。1行目の並びは変えない */
+  .top.stack > .fgroup { order: 1; flex-basis: 100%; }
   .wordmark {
     font-family: var(--mono);
     font-size: 15px; font-weight: 700;
@@ -102,7 +106,13 @@
   .tab[aria-selected="true"],
   .tab[aria-selected="true"]:hover { background: var(--dim); color: var(--panel); }
   .top .spacer { flex: 1 1 auto; }
-  .top > .status { flex: none; }
+  /* repo を下へ落としてもまだ1行目が入らないときに削るのは、状態の文字。
+     ここだけは端が落ちても押せなくなるものが無い。題名・タブ・更新・☰ は
+     flex: none のままなので、削られるのは必ずここから */
+  .top > .status {
+    flex: 0 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); letter-spacing: .03em; }
   .status b { color: var(--dim); font-weight: 500; }
   /* 文字は baseline で揃えたいが、ボタンは箱として中央で揃える。
@@ -839,15 +849,11 @@
      ラベルだけの行が残らないようにする */
   .filters .fgroup:has(.people-bar:empty) { display: none; }
   /* repo は見出しの行に置く。ほかの項目は baseline で揃えているが、
-     チップは箱なので中央で揃える。数が増えたら見出しの中で折り返す。
-     見出しの中で縮むのはここだけ（ほかは flex: none）。
-     狭い画面では、縮めるより下の行へ丸ごと落としたほうが読める */
-  .top > .fgroup { align-self: center; min-width: 0; flex: 0 1 auto; }
+     チップは箱なので中央で揃える。縮めはしない（縮めると中で折り返して
+     細長い塊になる）—— 入らなければ .stack で下の行へ丸ごと落とす。
+     落ちた先は幅いっぱいなので、そこで初めてチップが折り返す */
+  .top > .fgroup { align-self: center; min-width: 0; }
   .top > .fgroup > .flabel { flex: none; }
-  @media (max-width: 720px) {
-    .top { flex-wrap: wrap; }
-    .top > .fgroup { order: 1; flex-basis: 100%; }
-  }
   /* 「待ち」と目のボタンの高さを揃える。目の方は中がアイコンだけで
      テキストの行高を持たないので低くなる。--btn-h を当てると
      「待ち」（等幅の行高 ＋ padding ＋ 枠）と 1〜2px ずれるため、
@@ -1974,11 +1980,51 @@ function paintRepos(box, repos) {
 
 function renderScope() {
   const box = $("scope");
-  if (!shownRepos.length) {
-    box.textContent = "リポジトリ未設定";
-    return;
-  }
-  paintRepos(box, shownRepos);
+  if (!shownRepos.length) box.textContent = "リポジトリ未設定";
+  else paintRepos(box, shownRepos);
+  fitTop();   // 並ぶものが変われば、1行に入るかどうかも変わる
+}
+
+/* 中身を1行に並べたときの幅。折り返していても同じ数字が出る ——
+   offsetWidth は折り返したあとの幅なので、そのままでは使えない */
+function rowWidth(box, gap) {
+  const kids = [...box.children].filter((el) => !el.hidden);
+  if (!kids.length) return box.offsetWidth;   // チップが無いとき（文言だけ）
+  return kids.reduce((w, el) => w + el.offsetWidth, 0) + (kids.length - 1) * gap;
+}
+
+/* 見出しが1行に収まるか測って、収まらなければ repo を下の行へ落とす。
+   .spacer は幅を持たない（余りを吸うだけ）ので、数から外して gap だけ数える */
+function fitTop() {
+  const top = document.querySelector(".top");
+  const group = top.querySelector(".fgroup");
+  if (!group) return;
+  const GAP = 14, LABEL_GAP = 7, CHIP_GAP = 6;
+  const scope = $("scope");
+  const groupWidth = [...group.children]
+    .reduce((w, el) => w + (el === scope ? rowWidth(scope, CHIP_GAP) : el.offsetWidth), 0) +
+    (group.children.length - 1) * LABEL_GAP;
+  // 状態の文字は縮んで「…」になることがある。削られる前の幅で測らないと、
+  // 縮んだぶん「入る」と読めてしまい、下ろした repo が上に戻ってしまう
+  const status = $("status");
+  const need = [...top.children]
+    .filter((el) => !el.classList.contains("spacer"))
+    .reduce((w, el) => w + (el === group ? groupWidth
+      : el === status ? Math.max(el.offsetWidth, el.scrollWidth)
+      : el.offsetWidth), 0) +
+    (top.children.length - 1) * GAP;
+  const stack = need > top.clientWidth;
+  top.classList.toggle("stack", stack);
+
+  /* repo を下ろしてもまだ1行目が入らない幅がある。flex は折り返しが効いている
+     あいだ、入らないものを縮めずに次の行へ送るので、放っておくと ☰ が落ちる。
+     残りの席（1行目から押す場所を引いたぶん）を状態に渡して、そこで「…」に
+     させる。削れるのは文字だけで、押す場所は1行目に残る */
+  const fixed = [".wordmark", ".tabs", "#refresh", "#toggle"]
+    .reduce((w, sel) => w + top.querySelector(sel).offsetWidth, 0);
+  // 1行目は 題名 / タブ / 余白 / 状態 / 更新 / ☰ の6つ ＝ 隙間5つ
+  const room = top.clientWidth - fixed - 5 * GAP;
+  status.style.maxWidth = stack ? Math.max(0, room) + "px" : "";
 }
 
 /* PR をどのレーンに置くか。null なら盤面に出さない */
@@ -2135,6 +2181,7 @@ async function refresh() {
   $("status").innerHTML = "更新 <b>" + hh + "</b>" +
     (autoPaused() ? " · 自動更新 停止中" : "") +
     (gh.remaining ? " · 残 " + gh.remaining : "");
+  fitTop();   // 「残 4998」が付くだけでも1行に入らなくなることがある
 }
 
 /* ---------- render ---------- */
@@ -3218,6 +3265,11 @@ $("waitfilter").onclick = () => {
   renderBoard();
 };
 $("showall").onclick = () => { hiddenRepos.clear(); syncRepos(); };
+/* 見出しの幅が変わったら測り直す。窓の大きさだけでなく、
+   設定の「盤面の幅」でも変わるので、resize ではなく箱そのものを見る */
+if (window.ResizeObserver) new ResizeObserver(fitTop).observe(document.querySelector(".top"));
+else window.addEventListener("resize", fitTop);
+
 $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
 $("scrim").onclick = () => setSettings(false);
