@@ -106,10 +106,13 @@
   /* 更新はアイコンだけ。☰ と同じ幅にして並びを揃える */
   #refresh, #blind { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
   #refresh svg, #blind svg { width: 15px; height: 15px; }
+  /* 目も同じ向き。押されている＝伏せた PR も出している */
   #blind[aria-pressed="true"] { color: var(--ink); border-color: var(--dim); }
-  /* 「待ち」の絞り込み。押されているあいだは印の付いた PR を盤面から外す */
-  /* closed / merged の絞り込みも同じ作り。closed タブのあいだだけ出る。
-     押されている＝その種類を盤面から外している、で「待ち」と揃える */
+  /* 「待ち」「closed」「merged」の絞り込み。closed / merged は closed タブの
+     あいだだけ出る。向きは repo / who / lane のトグル（.tgl）と揃える ——
+     押されている＝盤面に出している。外したものは薄い字＋取り消し線に落として、
+     .repo と同じ見え方にする。逆向き（外しているものが一番濃く出る）だと、
+     並んだトグルごとに「濃い＝どっち」を読み替えることになる */
   #waitfilter, #closedfilter, #mergedfilter {
     text-transform: none; letter-spacing: .04em; padding: 5px 9px;
   }
@@ -117,6 +120,11 @@
   #closedfilter[aria-pressed="true"],
   #mergedfilter[aria-pressed="true"] {
     color: var(--ink); border-color: var(--dim); background: var(--panel);
+  }
+  #waitfilter[aria-pressed="false"],
+  #closedfilter[aria-pressed="false"],
+  #mergedfilter[aria-pressed="false"] {
+    color: var(--faint); border-color: var(--line); background: none;
     text-decoration: line-through; text-decoration-color: var(--line);
   }
   #closedfilter[hidden], #mergedfilter[hidden] { display: none; }
@@ -582,11 +590,21 @@
   .lane.sel .pr-row.picked { background: var(--panel-hi); box-shadow: inset 3px 0 0 var(--c); }
   .lane.sel .pr-row.picked:hover { background: #EDF1F2; }
 
-  /* who / repo のチップを hover したとき、対応するカードに同じ印を出す。
-     .picked と同じ組み（地色 + 左のレーン色）を使うが、選択中と衝突しないよう
+  /* who / repo のチップを hover したとき、対応するカードだけ明るく浮かせ、
+     それ以外は #board.spot 側でまとめて沈める（スポットライト）。
+     地色はそのレーンの色を薄く混ぜて、単なる灰色より「効いている」感を出す。
+     .picked と同じ組み（地色 + 左のレーン色の帯）だが、選択中と衝突しないよう
      .lane.sel の外だけに効かせる —— 選択中は pointer-events が止まっていて
      このホバーと意味が競合しないため */
-  .pr-row.hi { background: var(--panel-hi); box-shadow: inset 3px 0 0 var(--c); }
+  .pr-row.hi {
+    background: color-mix(in srgb, var(--c) 10%, var(--panel));
+    box-shadow: inset 3px 0 0 var(--c);
+  }
+  /* スポット中は的を絞るのが目的なので、待ち/伏せたの薄さより優先して
+     一律に沈める —— #board という ID の分だけ詳細度を上げて勝たせている。
+     当たっている側は、待ち/伏せたで薄くなっていても構わず全開に戻す */
+  #board.spot .pr-row .pr { opacity: .28; }
+  #board.spot .pr-row.hi .pr { opacity: 1; }
 
   /* 行は器。リンクはタイトルだけ、チェックボックスは右下に浮かせる。
      カード全体をリンクにすると、チェックボックスを押しても PR が開いてしまう */
@@ -602,6 +620,7 @@
   .pr {
     display: grid; grid-template-columns: 1fr auto; gap: 2px 14px;
     padding: 10px 14px;
+    transition: opacity .12s;
   }
   /* 行の右下に並ぶ操作。押しても PR は開かない場所 */
   .pr-actions {
@@ -761,9 +780,14 @@
      二重に出すと +n を目立たせるために塗るはめになる */
   .pr .m .cnt.new { cursor: pointer; }
   .pr .m .cnt.new:hover { background: var(--panel-hi); }
+  /* 枠は「押せる」の印としてボタン・トグルが握っている（.tgl 等）。
+     chip は押せないただの札なので、同じ枠を付けると紛れる。
+     枠を落として薄い塗りにし、「塗り＝情報の札」で言語を分ける。
+     色は各 .chip.* が currentColor として持っている値をそのまま薄めて敷く */
   .chip {
     font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
-    padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.5;
+    padding: 1px 5px; border: 0; border-radius: 2px; line-height: 1.5;
+    background: color-mix(in srgb, currentColor 14%, var(--panel));
   }
   .chip.draft { color: var(--draft); }
   .chip.stale { color: #B26B00; }
@@ -2989,7 +3013,7 @@ async function runOps(btn, act) {
 function paintBlind() {
   const b = $("blind");
   b.innerHTML = showOut ? ICON_EYE : ICON_EYE_OFF;
-  b.setAttribute("aria-pressed", String(!showOut));
+  b.setAttribute("aria-pressed", String(showOut));
   b.title = showOut ? "伏せたPRも出している — 押すと隠す" : "伏せたPRを隠している — 押すと出す";
   b.setAttribute("aria-label", b.title);
 }
@@ -3014,7 +3038,7 @@ function paintTabFilters() {
 function paintClosedFilters() {
   const set = (id, on, name) => {
     const b = $(id);
-    b.setAttribute("aria-pressed", String(!on));
+    b.setAttribute("aria-pressed", String(on));
     b.title = on ? name + "も出している — 押すと隠す" : name + "を隠している — 押すと出す";
     b.setAttribute("aria-label", b.title);
   };
@@ -3049,7 +3073,7 @@ $("tab-closed").onclick = () => setTab("closed");
 /* ヘッダーの「待ち」。印の付いた PR を盤面に残すかどうかだけを切り替える */
 function paintWaitFilter() {
   const b = $("waitfilter");
-  b.setAttribute("aria-pressed", String(!showWaiting));
+  b.setAttribute("aria-pressed", String(showWaiting));
   b.title = showWaiting ? "「待ち」も出している — 押すと隠す" : "「待ち」を隠している — 押すと出す";
   b.setAttribute("aria-label", b.title);
 }
@@ -3434,6 +3458,9 @@ function hoverPrRows(chip, on) {
   const attr = chip.classList.contains("who") ? "author" : "repo";
   const val = attr === "author" ? chip.dataset.person : chip.dataset.repo;
   if (!val) return;
+  // 当たっている行を光らせるだけでなく、盤面全体を「絞っている最中」にする。
+  // それ以外の行はこの spot を見て一律に沈む（CSS 側）
+  $("board").classList.toggle("spot", on);
   document.querySelectorAll('.pr-row[data-' + attr + '="' + val.replace(/"/g, '\\"') + '"]')
     .forEach((row) => row.classList.toggle("hi", on));
 }
