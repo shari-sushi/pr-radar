@@ -56,8 +56,13 @@
   body[data-width="w-narrow"] .board { grid-template-columns: 1fr; }
 
   /* ---------- masthead ---------- */
+  /* 幅が足りなくなったときに折り返すのは repo のチップだけ。題名・タブ・
+     更新・☰ は1行に残す —— 押す場所が幅しだいで行をまたいで動くと、
+     窓を広げ縮めするたびに探し直しになる。
+     そのために、縮められるのは repo の枠だけにして（ほかは flex: none）、
+     中のチップが自分の枠の中で折り返すようにする */
   .top {
-    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: nowrap;
     padding-bottom: 12px; margin-bottom: 14px;
     border-bottom: 2px solid var(--ink);
   }
@@ -65,7 +70,7 @@
     font-family: var(--mono);
     font-size: 15px; font-weight: 700;
     letter-spacing: .22em; text-transform: uppercase;
-    margin: 0;
+    margin: 0; flex: none;
   }
   /* 見出しを「全部出す」ボタンにする。見た目は文字のまま */
   .wordmark button {
@@ -97,12 +102,13 @@
   .tab[aria-selected="true"],
   .tab[aria-selected="true"]:hover { background: var(--dim); color: var(--panel); }
   .top .spacer { flex: 1 1 auto; }
+  .top > .status { flex: none; }
   .status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); letter-spacing: .03em; }
   .status b { color: var(--dim); font-weight: 500; }
   /* 文字は baseline で揃えたいが、ボタンは箱として中央で揃える。
      ☰ は中にテキストが無く baseline を持たないので、baseline のままだと下端で揃って落ちる。
      見出しの中のボタンとリポジトリのチップは対象外にしたいので直接の子だけ */
-  .top > button { align-self: center; height: var(--btn-h); }
+  .top > button { align-self: center; height: var(--btn-h); flex: none; }
   /* 更新はアイコンだけ。☰ と同じ幅にして並びを揃える */
   #refresh, #blind { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
   #refresh svg, #blind svg { width: 15px; height: 15px; }
@@ -327,13 +333,6 @@
     border-bottom: 2px solid var(--ink); padding-bottom: 6px;
   }
   .group-head p { margin: 0; font-size: 11.5px; color: var(--faint); line-height: 1.45; }
-  /* 基本設定が埋まるまで、使用設定があった場所に出す案内。
-     黙って消えていると、トークンを消したときに項目が消えた理由が分からない */
-  .group-locked {
-    margin: 0; font-size: 11.5px; color: var(--faint); line-height: 1.45;
-    border: 1px dashed var(--line); padding: 10px 12px;
-  }
-  .group-locked[hidden] { display: none; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   /* セクション見出し。押すと初期設定と説明文が下に開く。
      見た目は文字のままにしたい（.wordmark button と同じ手で素の button を打ち消す）。
@@ -840,8 +839,15 @@
      ラベルだけの行が残らないようにする */
   .filters .fgroup:has(.people-bar:empty) { display: none; }
   /* repo は見出しの行に置く。ほかの項目は baseline で揃えているが、
-     チップは箱なので中央で揃える。数が増えたら見出しの中で折り返す */
-  .top > .fgroup { align-self: center; min-width: 0; }
+     チップは箱なので中央で揃える。数が増えたら見出しの中で折り返す。
+     見出しの中で縮むのはここだけ（ほかは flex: none）。
+     狭い画面では、縮めるより下の行へ丸ごと落としたほうが読める */
+  .top > .fgroup { align-self: center; min-width: 0; flex: 0 1 auto; }
+  .top > .fgroup > .flabel { flex: none; }
+  @media (max-width: 720px) {
+    .top { flex-wrap: wrap; }
+    .top > .fgroup { order: 1; flex-basis: 100%; }
+  }
   /* 「待ち」と目のボタンの高さを揃える。目の方は中がアイコンだけで
      テキストの行高を持たないので低くなる。--btn-h を当てると
      「待ち」（等幅の行高 ＋ padding ＋ 枠）と 1〜2px ずれるため、
@@ -940,9 +946,7 @@
       <span class="hint">貼り付けて「取り込む」を押すと、この端末の設定を置き換えて読み込み直す。トークンは入っていないので、移した先で入れ直す。</span>
       <span class="hint warn" id="ioout" hidden></span>
     </div>
-    <p class="group-locked" id="usagelocked">トークンとリポジトリを入れると、ここに使用設定が出ます。</p>
-
-    <section class="group" id="g-usage" hidden>
+    <section class="group" id="g-usage">
       <div class="group-head">
         <h3>使用設定</h3>
         <p>ここは触った時点で保存されます。</p>
@@ -2696,12 +2700,6 @@ function paintSaveState() {
   $("savenote").hidden = dirty;
 }
 
-function paintGroups() {
-  const ready = !!String(cfg.token || "").trim() && !!$("repos").value.trim();
-  $("g-usage").hidden = !ready;
-  $("usagelocked").hidden = ready;
-}
-
 function fillForm() {
   $("token").value = cfg.token;
   $("mates").value = cfg.mates;
@@ -2722,7 +2720,6 @@ function fillForm() {
   renderPeople();
   renderRepoFilter();
   renderLaneFilter();
-  paintGroups();
   paintSaveState();
   // 開閉は覚えない。開くたび全部閉じた状態から始まる（HTML の hidden 属性）。
   // 例外はトークンだけ —— まだ入っていないなら開いた状態で見せる
@@ -3259,7 +3256,7 @@ $("refresh").onclick = () => {
   if (activeTab === "closed") loadClosed(true);
 };
 $("mates").oninput = () => { renderPeople(); renderBoard(); paintSaveState(); };
-$("repos").oninput = () => { renderRepoFilter(); paintGroups(); paintSaveState(); };
+$("repos").oninput = () => { renderRepoFilter(); paintSaveState(); };
 /* トークンは打つだけでは保存しない。保存ボタンの出番があるかだけを見る */
 $("token").oninput = paintSaveState;
 /* 設定の中の開閉。data-fold のボタンが aria-controls の中身を出し入れする。
@@ -3493,7 +3490,6 @@ $("save").onclick = async () => {
   };
   tokenNote = "";
   await saveConfig();
-  paintGroups();
   paintSaveState();
   $("testout").hidden = true;
   $("testout").style.removeProperty("--rows");
@@ -3505,7 +3501,6 @@ $("forget").onclick = async () => {
   $("token").value = "";
   tokenNote = "";
   await saveConfig();
-  paintGroups();
   paintSaveState();
   refresh();
 };
