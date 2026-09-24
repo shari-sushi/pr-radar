@@ -1224,7 +1224,35 @@ async function decryptToken(packed) {
   return new TextDecoder().decode(body);
 }
 
+/* 取り込みは読み込み直す。打ったまま「保存して更新」を押していないトークンは
+   画面の中にしかないので、そのままでは消える（接続テストだけ押した状態がこれ）。
+   鍵が無い端末ではそもそも保存できないぶんでもあるので、読み込み直すあいだだけ
+   ここに預けて、次の loadConfig で1回だけ拾う。タブを閉じれば消えるのは今までと同じ */
+const HANDOFF_KEY = "pr-radar:token-handoff";
+
+/* 読み込み直しても戻ってこないぶんだけ預ける。すでに保存されていて、
+   それと同じものが画面に出ているなら、預けるものは無い */
+function stashLiveToken() {
+  const live = ($("token").value || "").trim() || cfg.token;
+  const restored = localStorage.getItem(TOKEN_KEY) ? cfg.token : "";
+  if (!live || live === restored) return;
+  // 預けられなくても取り込みは通す。ここで止めるほどのものではない
+  try { sessionStorage.setItem(HANDOFF_KEY, live); } catch (e) { /* 諦める */ }
+}
+
+function takeStashedToken() {
+  try {
+    const live = sessionStorage.getItem(HANDOFF_KEY) || "";
+    sessionStorage.removeItem(HANDOFF_KEY);   // 拾うのは1回だけ
+    return live;
+  } catch (e) {
+    return "";
+  }
+}
+
 async function loadConfig() {
+  // 預かっているぶんは、この先どこで return しても捨てる（持ち越さない）
+  const handed = takeStashedToken();
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); }
   catch (e) { /* 壊れていたら既定値で始める */ }
@@ -1237,13 +1265,16 @@ async function loadConfig() {
     return;
   }
   const packed = cryptoKey && localStorage.getItem(TOKEN_KEY);
-  if (!packed) return;
-  try {
-    cfg.token = await decryptToken(packed);
-  } catch (e) {
-    localStorage.removeItem(TOKEN_KEY);
-    tokenNote = "保存されていたトークンを復号できませんでした。key.js が作り直されたのかもしれません。入れ直してください。";
+  if (packed) {
+    try {
+      cfg.token = await decryptToken(packed);
+    } catch (e) {
+      localStorage.removeItem(TOKEN_KEY);
+      tokenNote = "保存されていたトークンを復号できませんでした。key.js が作り直されたのかもしれません。入れ直してください。";
+    }
   }
+  // 取り込みで読み込み直す直前に預けたぶん。保存されていたものより新しい
+  if (handed) cfg.token = handed;
 }
 
 /* 平文の側だけを書く。トークンには触らない。
@@ -1341,10 +1372,32 @@ function withoutToken(name, obj) {
   return rest;
 }
 
+/* JSON.stringify(…, 2) は配列を必ず1要素1行に開く。seen の [0, 0, 0] や
+   days の [1, 2, 3] は、開くと中身より行数のほうが多くなって読めたものではない。
+   中に配列もオブジェクトも居ない配列だけ、1行のまま出す */
+function prettyJson(value, pad) {
+  const here = pad || "";
+  const next = here + "  ";
+  if (Array.isArray(value)) {
+    if (!value.length) return "[]";
+    if (value.every((v) => v === null || typeof v !== "object")) {
+      return "[" + value.map((v) => JSON.stringify(v)).join(", ") + "]";
+    }
+    return "[\n" + value.map((v) => next + prettyJson(v, next)).join(",\n") + "\n" + here + "]";
+  }
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value);
+    if (!keys.length) return "{}";
+    return "{\n" + keys.map((k) => next + JSON.stringify(k) + ": " + prettyJson(value[k], next)).join(",\n") +
+      "\n" + here + "}";
+  }
+  return JSON.stringify(value);
+}
+
 function exportSettings() {
   const out = {};
   for (const { name, key } of IO_KEYS) out[name] = withoutToken(name, readJson(key));
-  return JSON.stringify(out, null, 2);
+  return prettyJson(out);
 }
 
 /* 貼られた JSON を localStorage へ。書く前に全部を検めて、途中で落ちて
@@ -3192,6 +3245,7 @@ $("iocancel").onclick = () => setIoBox(false);
 $("iosave").onclick = () => {
   try {
     importSettings($("iotext").value);
+    stashLiveToken();   // 書けてから預ける。取り込みが失敗した回では触らない
   } catch (e) {
     $("ioout").textContent = e.message;
     $("ioout").hidden = false;
