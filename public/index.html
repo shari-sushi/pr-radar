@@ -301,6 +301,18 @@
   }
   /* ✕ は ☰ と同じ寸法。グリフが小さいと箱まで小さく見えるので少し大きめ */
   .drawer-head button { width: 30px; height: var(--btn-h); padding: 0; font-size: 14px; }
+  /* 設定の持ち出し / 取り込み。見出しのすぐ右に置き、✕ だけを右端へ逃がす。
+     margin-right: auto が空きを全部吸うので、space-between のままで並ぶ */
+  .drawer-head .io-acts { margin-right: auto; display: flex; gap: 4px; }
+  .drawer-head .ioact { display: inline-flex; align-items: center; justify-content: center; }
+  .drawer-head .ioact svg { width: 15px; height: 15px; }
+  .drawer-head .ioact[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); }
+  .drawer-head .ioact.done { color: var(--ready); border-color: var(--ready); }
+  .drawer-head .ioact.fail { color: var(--review); border-color: var(--review); }
+  /* 貼り付け欄。設定のどのかたまりにも属さないので、見出しの直下に置く */
+  .iobox[hidden] { display: none; }
+  .iobox textarea { min-height: 180px; }
+  .iobox .io-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   /* 設定を2つのかたまりに分ける。上は普段触るもの（触った時点で効く）、
      下は初回に決めるもの（「保存して更新」が要る）。
      かたまりの見出しは 2px の ink の罫線にして、中の .sec
@@ -913,7 +925,20 @@
   <aside class="settings" id="settings" role="dialog" aria-modal="true" aria-label="設定">
     <div class="drawer-head">
       <h2>設定</h2>
+      <span class="io-acts">
+        <button class="ioact" id="iocopy" type="button" aria-label="設定を JSON でコピー" title="トークン以外の設定を JSON でコピー"></button>
+        <button class="ioact" id="ioimport" type="button" aria-label="JSON を貼り付けて取り込む" title="JSON を貼り付けて取り込む" aria-expanded="false" aria-controls="iobox"></button>
+      </span>
       <button id="close" aria-label="閉じる">✕</button>
+    </div>
+    <div class="field iobox" id="iobox" hidden>
+      <textarea id="iotext" rows="10" spellcheck="false" autocomplete="off" placeholder='{ "config": { ... }, "view": { ... } }' aria-label="取り込む JSON"></textarea>
+      <div class="io-row">
+        <button class="save" id="iosave" type="button">取り込む</button>
+        <button id="iocancel" type="button">やめる</button>
+      </div>
+      <span class="hint">貼り付けて「取り込む」を押すと、この端末の設定を置き換えて読み込み直す。トークンは入っていないので、移した先で入れ直す。</span>
+      <span class="hint warn" id="ioout" hidden></span>
     </div>
     <p class="group-locked" id="usagelocked">トークンとリポジトリを入れると、ここに使用設定が出ます。</p>
 
@@ -1110,6 +1135,8 @@ const ICON_MEMO = SVG + '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 
 /* 表示 / 伏せる のトグル */
 const ICON_EYE = SVG + '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_GEAR = SVG + '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
+/* 設定の取り込み（lucide の import）。箱に向かって下向きの矢印 */
+const ICON_IMPORT = SVG + '<path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></svg>';
 const ICON_EYE_OFF = SVG + '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
 
 /* レビュー依頼の下書き。PR一覧はこの文末に足す */
@@ -1289,6 +1316,60 @@ function writeJson(key, value) {
     showAlert("保存できませんでした",
       "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
   }
+}
+
+/* ---------- 設定の持ち出し / 取り込み ---------- */
+/* 別の端末へ移すための JSON。localStorage のキーをそのまま名前にせず、
+   短い名前に付け替えて出す —— 貼り付ける側が中身を読んで直せる形にしたい。
+   入れないものが2つある。
+   - トークン: この端末の key.js でしか復号できず、平文で貼って回すものでもない
+   - 盤面のキャッシュ: 開いた直後に出すためだけのもので、取り直せば同じものが入る */
+const IO_KEYS = [
+  { name: "config",  key: KEY },        // リポジトリ・追う人・自動更新（トークンを除く）
+  { name: "view",    key: VIEW_KEY },   // 絞り込み・盤面の幅・開いていたタブ
+  { name: "labels",  key: LABEL_KEY },  // 伏せた PR
+  { name: "waiting", key: WAIT_KEY },   // 待ちの印
+  { name: "memos",   key: MEMO_KEY },   // PR ごとのメモ
+  { name: "seen",    key: SEEN_KEY }    // 既読の基準（件数）
+];
+
+/* 平文の設定に token が残っていることがある（平文で保存していた頃のものを
+   読み込んだ直後など）。出すときも取り込むときも、ここで必ず落とす */
+function withoutToken(name, obj) {
+  if (name !== "config") return obj;
+  const { token, ...rest } = obj;
+  return rest;
+}
+
+function exportSettings() {
+  const out = {};
+  for (const { name, key } of IO_KEYS) out[name] = withoutToken(name, readJson(key));
+  return JSON.stringify(out, null, 2);
+}
+
+/* 貼られた JSON を localStorage へ。書く前に全部を検めて、途中で落ちて
+   半分だけ入った状態にしない。知らないキーは黙って捨てる。
+   持っていない名前は「消す」ではなく「触らない」—— 手で config だけを
+   抜き出して貼る、という使い方を塞がないため。
+   読めなければ throw して、呼んだ側が理由を画面に出す */
+function importSettings(text) {
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) { throw new Error("JSON として読めません（" + e.message + "）"); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("いちばん外側が { } のかたちではありません");
+  }
+  const writes = [];
+  for (const { name, key } of IO_KEYS) {
+    const value = data[name];
+    if (value === undefined) continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("`" + name + "` が { } のかたちではありません");
+    }
+    writes.push([key, JSON.stringify(withoutToken(name, value))]);
+  }
+  if (!writes.length) throw new Error("取り込めるものがありません（" + IO_KEYS.map((k) => k.name).join(" / ") + "）");
+  for (const [key, json] of writes) localStorage.setItem(key, json);
 }
 
 const prKey = (pr) => pr.base.repo.full_name + "#" + pr.number;
@@ -2653,6 +2734,7 @@ function maybeAutoRefresh() {
 /* 設定ドロワー。開閉はクラスで持つ（hidden だと transition が効かないため） */
 const settingsOpen = () => $("settings").classList.contains("open");
 function setSettings(open) {
+  if (!open) setIoBox(false);
   $("settings").classList.toggle("open", open);
   $("scrim").classList.toggle("open", open);
   $("toggle").setAttribute("aria-expanded", String(open));
@@ -3089,6 +3171,34 @@ $("showall").onclick = () => { hiddenRepos.clear(); syncRepos(); };
 $("toggle").onclick = () => setSettings(!settingsOpen());
 $("close").onclick = () => setSettings(false);
 $("scrim").onclick = () => setSettings(false);
+
+/* 設定の持ち出し / 取り込み。見出しの右の2つ。
+   コピーは合図だけ出して何も変えない。取り込みは貼り付け欄を開く */
+$("iocopy").innerHTML = ICON_COPY;
+$("ioimport").innerHTML = ICON_IMPORT;
+
+function setIoBox(open) {
+  $("iobox").hidden = !open;
+  $("ioimport").setAttribute("aria-expanded", String(open));
+  $("ioout").hidden = true;
+  if (open) $("iotext").focus();
+}
+
+$("iocopy").onclick = () => copyText($("iocopy"), ICON_COPY, exportSettings());
+$("ioimport").onclick = () => setIoBox($("iobox").hidden);
+$("iocancel").onclick = () => setIoBox(false);
+/* 取り込んだら読み込み直す。cfg・view・印は読む場所がばらけていて、
+   その場で全部を当て直すと拾い漏れが出る。開き直すほうが確実 */
+$("iosave").onclick = () => {
+  try {
+    importSettings($("iotext").value);
+  } catch (e) {
+    $("ioout").textContent = e.message;
+    $("ioout").hidden = false;
+    return;
+  }
+  location.reload();
+};
 $("refresh").onclick = () => {
   refresh();
   // 自動更新では取り直さない。ページを送った分が毎回巻き戻ってしまうため
