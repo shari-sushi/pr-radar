@@ -73,8 +73,15 @@
     border-bottom: 2px solid var(--ink);
   }
   .top.stack { flex-wrap: wrap; }
-  /* order で最後に回して、幅いっぱいの行にする。1行目の並びは変えない */
-  .top.stack > .fgroup { order: 1; flex-basis: 100%; }
+  /* order で最後に回して、幅いっぱいの行にする。1行目の並びは変えない。
+     下ろした先は who / lane と同じ扱い ―― 折り返さずに1行で流す。
+     折り返すと、リポジトリが増えるたびに帯が何段にも伸びて盤面が下がる */
+  .top.stack > .fgroup {
+    order: 1; flex-basis: 100%; min-width: 0;
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+    padding-bottom: 6px;
+  }
+  .top.stack > .fgroup > .scope { flex-wrap: nowrap; }
   .wordmark {
     font-family: var(--mono);
     font-size: 15px; font-weight: 700;
@@ -957,6 +964,10 @@
     .top { gap: 8px; padding-bottom: 10px; margin-bottom: 12px; }
     .wordmark { font-size: 13px; letter-spacing: .12em; }
     .tab { padding: 4px 9px; }
+    /* 状態の文字は1行目から外して、自分の行に出す。1行目に置いたままだと、
+       文字が伸びた瞬間（「停止中」「残 4998」）に押し出されて ☰ が次の行へ落ちる。
+       max-width は fitTop が1行目用に inline で入れてくるので、ここで外す */
+    .top > .status { order: 2; flex-basis: 100%; max-width: none !important; }
     .bar { margin-top: -6px; }
     /* レーンの帯は左の柱をやめて、上に寝かせる。縦書きの見出しは
        1件しかないレーンでも柱のぶんだけ背が高くなる。
