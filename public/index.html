@@ -1049,7 +1049,7 @@
               <li><b>Resource owner</b> — 対象リポジトリを持つ organization（個人リポジトリなら自分）</li>
               <li><b>Expiration</b> — 短めに。90日など</li>
               <li><b>Repository access</b> — Only select repositories → 対象の3つだけ</li>
-              <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ</li>
+              <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ。歯車から draft の出し入れ / update branch を使うなら <code>Read and write</code></li>
               <li><b>Generate token</b> → 出てきた値をこの欄に貼る</li>
             </ol>
             <p><code>Metadata: Read-only</code> は自動で付く（外せない）。<code>Contents</code> は付けないこと —— 付けるとリポジトリを丸ごと落とせるトークンになる。</p>
@@ -1078,7 +1078,7 @@
         <button id="test">接続テスト</button>
         <button id="forget">トークンを消す</button>
         <span class="note" id="savenote" hidden>変更はありません</span>
-        <span class="note">設定はこのブラウザに保存されます（トークンは <code>key.js</code> の鍵で暗号化）。読み取り専用のトークンを使ってください。</span>
+        <span class="note">設定とトークンはこのブラウザに保存されます。トークンの送信先は <code>api.github.com</code> だけです。</span>
       </div>
       <div class="test-out" id="testout" hidden></div>
     </section>
@@ -1136,7 +1136,8 @@
   <p class="kbd"><kbd>r</kbd> 更新 &nbsp; <kbd>s</kbd> 設定 &nbsp; <kbd>m</kbd> 全体メモ</p>
 </div>
 
-<!-- この端末だけにある暗号鍵。run.sh が初回起動時に作る。git 管理外。 -->
+<!-- この端末だけにある暗号鍵。run.sh が初回起動時に作る。git 管理外。
+     公開ホストには無いので 404 になる（コンソールに出るだけ）。それで plainStore に切り替わる -->
 <script src="key.js"></script>
 <script>
 const DEFAULTS = {
@@ -1215,19 +1216,32 @@ let autoOpened = false;  // トークン未設定で設定を自動で開くの�
 /* 設定は平文で置くが、トークンだけは key.js の鍵で暗号化して別キーに分ける。
    key.js は git 管理外・この端末だけにあり、pr-radar を配信していないときは
    HTTP 越しに取得できない。あとから同じポートを別プロジェクトが使っても、
-   拾えるのは復号できない暗号文だけ、という前提の作り。 */
+   拾えるのは復号できない暗号文だけ、という前提の作り。
+
+   公開ホスト（Vercel 等）には key.js が無い。そこは専用の origin で、あとから
+   別のものが同じ origin に来ることが無いので、この暗号化が守る相手がいない。
+   暗号文と鍵を同じ場所に置いても意味が無いので、そのまま保存する（plainStore）。
+   暗号文とは別キーに入れ、鍵のある端末で「復号できない」と誤判定させない */
 const TOKEN_KEY = "pr-radar:token";
+const PLAIN_TOKEN_KEY = "pr-radar:token-plain";
 
 let cryptoKey = null;  // CryptoKey。使えないときは null
+let plainStore = false;  // key.js が無い配信先。暗号化せずそのまま保存する
 let cryptoNote = "";   // 鍵が使えない理由。設定画面のトークン欄に出す
 let tokenNote = "";    // トークンが読めなかったときの補足
 
 async function initCrypto() {
+  const hex = window.PR_RADAR_KEY;
+  if (hex === undefined) {
+    // key.js が配信されていない = 公開ホスト。run.sh は必ず key.js を作るので、
+    // 「無い」は「壊れている」と区別できる（壊れていれば下で赤字にする）
+    plainStore = true;
+    return;
+  }
   if (!window.crypto || !crypto.subtle) {
     cryptoNote = "安全なコンテキストで開かれていないため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動して http://127.0.0.1:49787/ から開いてください。";
     return;
   }
-  const hex = window.PR_RADAR_KEY;
   if (typeof hex !== "string" || !/^[0-9a-f]{64}$/i.test(hex)) {
     cryptoNote = "key.js が無いか壊れているため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動すると自動生成されます。";
     return;
@@ -1257,11 +1271,14 @@ async function decryptToken(packed) {
    ここに預けて、次の loadConfig で1回だけ拾う。タブを閉じれば消えるのは今までと同じ */
 const HANDOFF_KEY = "pr-radar:token-handoff";
 
+const hasStoredToken = () =>
+  !!(localStorage.getItem(TOKEN_KEY) || localStorage.getItem(PLAIN_TOKEN_KEY));
+
 /* 読み込み直しても戻ってこないぶんだけ預ける。すでに保存されていて、
    それと同じものが画面に出ているなら、預けるものは無い */
 function stashLiveToken() {
   const live = ($("token").value || "").trim() || cfg.token;
-  const restored = localStorage.getItem(TOKEN_KEY) ? cfg.token : "";
+  const restored = hasStoredToken() ? cfg.token : "";
   if (!live || live === restored) return;
   // 預けられなくても取り込みは通す。ここで止めるほどのものではない
   try { sessionStorage.setItem(HANDOFF_KEY, live); } catch (e) { /* 諦める */ }
@@ -1291,13 +1308,17 @@ async function loadConfig() {
     await saveConfig();
     return;
   }
-  const packed = cryptoKey && localStorage.getItem(TOKEN_KEY);
-  if (packed) {
-    try {
-      cfg.token = await decryptToken(packed);
-    } catch (e) {
-      localStorage.removeItem(TOKEN_KEY);
-      tokenNote = "保存されていたトークンを復号できませんでした。key.js が作り直されたのかもしれません。入れ直してください。";
+  if (plainStore) {
+    cfg.token = localStorage.getItem(PLAIN_TOKEN_KEY) || "";
+  } else {
+    const packed = cryptoKey && localStorage.getItem(TOKEN_KEY);
+    if (packed) {
+      try {
+        cfg.token = await decryptToken(packed);
+      } catch (e) {
+        localStorage.removeItem(TOKEN_KEY);
+        tokenNote = "保存されていたトークンを復号できませんでした。key.js が作り直されたのかもしれません。入れ直してください。";
+      }
     }
   }
   // 取り込みで読み込み直す直前に預けたぶん。保存されていたものより新しい
@@ -1320,8 +1341,16 @@ function saveConfigJson() {
 async function saveConfig() {
   saveConfigJson();
   try {
-    if (cfg.token && cryptoKey) localStorage.setItem(TOKEN_KEY, await encryptToken(cfg.token));
-    else localStorage.removeItem(TOKEN_KEY);
+    if (!cfg.token) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(PLAIN_TOKEN_KEY);
+    } else if (plainStore) {
+      localStorage.setItem(PLAIN_TOKEN_KEY, cfg.token);
+    } else if (cryptoKey) {
+      localStorage.setItem(TOKEN_KEY, await encryptToken(cfg.token));
+    } else {
+      localStorage.removeItem(TOKEN_KEY);   // 鍵が壊れている端末。保存せず一時利用
+    }
   } catch (e) {
     showAlert("トークンを保存できませんでした",
       "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");

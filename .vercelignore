@@ -1,0 +1,16 @@
+# これがあると Vercel CLI は .gitignore を見なくなるので、除外は全部ここに書く。
+# 配信されるのは public/ だけ（vercel.json の outputDirectory）だが、
+# アップロード自体をさせないために、端末ごとのファイルはここでも弾く。
+.DS_Store
+Thumbs.db
+*.local.html
+
+# この端末の暗号鍵。公開ホストには置かない（無いことで平文保存に切り替わる）
+key.js
+
+# 配信ポート。ローカル起動用
+port.local
+
+# 配信に関係ないもの
+run.sh
+README.md
