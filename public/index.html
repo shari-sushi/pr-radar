@@ -1517,6 +1517,18 @@ function setSeen(key, now) {
   writeJson(SEEN_KEY, seen);
 }
 
+/* 閉じた PR の既読基準はもう使わない（差分バッジは open でしか出さない）ので、
+   ためておくだけ無駄。1件ずつ setSeen で消すと書き込みが都度走って重いので、
+   closed を取ったページ分をまとめて落とし、変わったときだけ1回書く */
+function pruneSeenClosed(items) {
+  let changed = false;
+  for (const it of items) {
+    const key = prKey(it.pr);
+    if (key in seen) { delete seen[key]; changed = true; }
+  }
+  if (changed) writeJson(SEEN_KEY, seen);
+}
+
 const isWaiting = (pr) => waiting[prKey(pr)] === true;
 
 function setWaiting(pr, on) {
@@ -1813,6 +1825,7 @@ async function loadClosed(reset) {
     fetchedClosed = (fetchedClosed || []).concat(got.items);
     closedPage += 1;
     closedEnd = got.end;
+    pruneSeenClosed(got.items);   // 閉じたと分かった分の既読基準を、このページ分まとめて捨てる
   } finally {
     closedLoading = false;
   }
