@@ -417,6 +417,22 @@
   .helpbox li { margin-bottom: 4px; }
   .helpbox li:last-child { margin-bottom: 0; }
   .helpbox p { margin: 9px 0 0; }
+  /* トークンがまだ無いときは、この箱が少し遅れて自分から開く（revealTokenHelp）。
+     開いた瞬間が目に入るように、下へ伸びながら差し込み、左の罫線を2度光らせる。
+     伸ばす先の高さは JS が実寸で渡す。開ききったら .reveal は外す ——
+     max-height を残すと、あとで窓を縮めたときに中身が切れる */
+  .helpbox.reveal {
+    overflow: hidden;
+    animation: helpopen .3s ease-out, helpmark 1.3s ease-in-out .3s;
+  }
+  @keyframes helpopen {
+    from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
+    to   { max-height: var(--helph, 60vh); opacity: 1; padding-top: 10px; padding-bottom: 10px; }
+  }
+  @keyframes helpmark {
+    0%, 50%, 100% { border-left-color: var(--dim); }
+    25%, 75% { border-left-color: var(--review); }
+  }
   .helpbox code {
     font-family: var(--mono); font-size: 11px;
     background: #F0F3F4; padding: 1px 4px; border-radius: 2px;
@@ -919,7 +935,7 @@
   .kbd { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-top: 26px; text-align: center; }
   .kbd kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--panel); }
 
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
 <div class="wrap">
@@ -2854,9 +2870,29 @@ function fillForm() {
   // 初見で最初に読むものが手順書になるようにする
   const noToken = !cfg.token;
   fold($("sec-token"), noToken);
-  fold($("tokenhelp"), noToken);
   fold($("g-usage-head"), !noToken);
+  clearTimeout(helpTimer);
+  if (noToken) helpTimer = setTimeout(revealTokenHelp, 500);
+  else fold($("tokenhelp"), false);
 }
+/* 「トークンの取り方」を、少し遅れて自分から開く。引き出しが出きってから動くので
+   「いま開いた」ことが目に入る —— 最初から開いていると、そこにあったことにすら
+   気づかれない。すでに開いていれば何もしない（先に自分で開いた人の邪魔をしない） */
+let helpTimer = null;
+function revealTokenHelp() {
+  const btn = $("tokenhelp"), box = $("tokenhelpbox");
+  if (btn.getAttribute("aria-expanded") === "true") return;
+  fold(btn, true);
+  // 伸ばす先は実寸で渡す。決め打ちだと、中身より低ければ切れ、高ければ最後が一瞬で開く
+  box.style.setProperty("--helph", box.scrollHeight + "px");
+  box.classList.add("reveal");
+  // 2つのアニメーション（.3s ＋ .3s 待って 1.3s）が終わったら印を落とす
+  setTimeout(() => {
+    box.classList.remove("reveal");
+    box.style.removeProperty("--helph");
+  }, 1700);
+}
+
 /* "09:00" を 540 に。読めなければ null */
 function parseHM(v) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(v == null ? "" : v).trim());
@@ -3436,6 +3472,8 @@ function fold(btn, open) {
 document.querySelectorAll("[data-fold]").forEach((btn) => {
   btn.onclick = () => fold(btn, btn.getAttribute("aria-expanded") !== "true");
 });
+/* 自分から開く前に触られたら、そちらが正しい（閉じた直後に開き直さない） */
+$("tokenhelp").addEventListener("click", () => clearTimeout(helpTimer));
 
 /* 使用設定のトグルは「並んでいるものを出す / 出さない」だけで、一覧そのものは
    基本設定の欄で打つ。並びの末尾から、その欄まで連れて行くボタンを置く。
