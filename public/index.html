@@ -1048,7 +1048,7 @@
               <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> を開く（Fine-grained token）</li>
               <li><b>Resource owner</b> — 対象リポジトリを持つ organization（個人リポジトリなら自分）</li>
               <li><b>Expiration</b> — 短めに。90日など</li>
-              <li><b>Repository access</b> — Only select repositories → 対象の3つだけ</li>
+              <li><b>Repository access</b> — Only select repositories → 盤面に出すリポジトリだけ</li>
               <li><b>Repository permissions</b> — <code>Pull requests</code> を <code>Read-only</code>。これだけ。歯車から draft の出し入れ / update branch を使うなら <code>Read and write</code></li>
               <li><b>Generate token</b> → 出てきた値をこの欄に貼る</li>
             </ol>
@@ -1143,7 +1143,7 @@
 const DEFAULTS = {
   token: "",
   mates: "",
-  repos: "shari-sushi/V-Kara-Lists\nshari-sushi/orlder-car-line\nshari-sushi/sandbox",
+  repos: "shari-sushi/pr-radar",   // 設定が無いときの例。公開ホストで他の人が開いても困らないものだけ
   // 保存されるときは文字列（$("interval").value）なので、既定も文字列で置く
   interval: "60*60",
   quietFrom: "21:00",  // 自動更新を止める時間帯。空なら止めない

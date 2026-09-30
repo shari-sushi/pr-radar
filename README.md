@@ -255,7 +255,7 @@ Fine-grained personal access token を推奨。手順は設定画面の「アク
 | 項目 | 値 |
 | --- | --- |
 | Resource owner | 対象リポジトリを持つ organization |
-| Repository access | Only select repositories → 対象の3つ |
+| Repository access | Only select repositories → 盤面に出すリポジトリだけ |
 | Repository permissions | **Pull requests: Read-only** のみ（歯車を使うなら Read and write） |
 
 `Metadata: Read-only` は自動で付く（外せない）。`Contents` は不要 —— ファイルの中身には触らないため。
