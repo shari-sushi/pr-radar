@@ -352,6 +352,21 @@
     border-bottom: 2px solid var(--ink); padding-bottom: 6px;
   }
   .group-head p { margin: 0; font-size: 11.5px; color: var(--faint); line-height: 1.45; }
+  /* 使用設定は畳める。見出しの見た目は h3 のまま —— 罫線を button 側に移して、
+     押せる範囲を見出しの行いっぱいにする */
+  .group-head h3:has(.ghead) { border-bottom: 0; padding-bottom: 0; }
+  .ghead {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+    text-align: left; margin: 0; padding: 0 0 6px;
+    background: none; border: 0; border-bottom: 2px solid var(--ink); border-radius: 0;
+    cursor: pointer;
+  }
+  .ghead:hover { color: var(--ink); background: none; border: 0; border-bottom: 2px solid var(--ink); }
+  /* 畳んだら、そのかたまりの説明文も一緒に引っ込める */
+  .group-head:has(.ghead[aria-expanded="false"]) p { display: none; }
+  .group-body { display: grid; gap: 20px; }
+  .group-body[hidden] { display: none; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   /* セクション見出し。押すと初期設定と説明文が下に開く。
      見た目は文字のままにしたい（.wordmark button と同じ手で素の button を打ち消す）。
@@ -368,12 +383,13 @@
   }
   .field > .sec:hover { color: var(--ink); background: none; border: 0; }
   /* 山形。閉じているあいだは右向き。SVG を8か所に貼らず CSS で描く */
-  .sec .caret {
+  .sec .caret, .ghead .caret {
     flex: none; width: 5px; height: 5px; margin-left: -4px;
     border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
     transform: rotate(45deg); transition: transform .16s;
   }
-  .sec[aria-expanded="false"] .caret { transform: rotate(-45deg); }
+  .sec[aria-expanded="false"] .caret,
+  .ghead[aria-expanded="false"] .caret { transform: rotate(-45deg); }
   /* つながっていないときは、直し方がここにあると分かるようにする。
      「?」は畳む側に入っていて見えないので、赤はこの見出しに出す */
   .field > .sec.bad { color: var(--review); }
@@ -963,72 +979,74 @@
     </div>
     <section class="group" id="g-usage">
       <div class="group-head">
-        <h3>使用設定</h3>
+        <h3><button class="ghead" id="g-usage-head" type="button" data-fold aria-expanded="true" aria-controls="f-usage">使用設定<span class="caret"></span></button></h3>
         <p>ここは触った時点で保存されます。</p>
       </div>
-      <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-people">追う人<span class="caret"></span></button>
-        <div class="fold" id="f-people" hidden>
-          <span class="hint">チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。</span>
+      <div class="group-body" id="f-usage">
+        <div class="field">
+          <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-people">追う人<span class="caret"></span></button>
+          <div class="fold" id="f-people" hidden>
+            <span class="hint">チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。</span>
+          </div>
+          <div class="repo-toggles" id="people"></div>
         </div>
-        <div class="repo-toggles" id="people"></div>
-      </div>
-      <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repofilter">出すリポジトリ<span class="caret"></span></button>
-        <div class="fold" id="f-repofilter" hidden>
-          <span class="hint">盤面の上の帯にあるものと同じ絞り込み。押した時点で盤面に反映される。</span>
+        <div class="field">
+          <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-repofilter">出すリポジトリ<span class="caret"></span></button>
+          <div class="fold" id="f-repofilter" hidden>
+            <span class="hint">盤面の上の帯にあるものと同じ絞り込み。押した時点で盤面に反映される。</span>
+          </div>
+          <div class="repo-toggles" id="repofilter"></div>
         </div>
-        <div class="repo-toggles" id="repofilter"></div>
-      </div>
-      <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-interval">自動更新<span class="caret"></span></button>
-        <div class="interval">
-          <input id="interval" type="text" inputmode="text" placeholder="60*60" autocomplete="off" spellcheck="false" aria-label="自動更新" aria-describedby="intervalval intervalout">
-          <span class="hint" id="intervalval"></span>
+        <div class="field">
+          <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-interval">自動更新<span class="caret"></span></button>
+          <div class="interval">
+            <input id="interval" type="text" inputmode="text" placeholder="60*60" autocomplete="off" spellcheck="false" aria-label="自動更新" aria-describedby="intervalval intervalout">
+            <span class="hint" id="intervalval"></span>
+          </div>
+          <div class="fold" id="f-interval" hidden>
+            <span class="hint">これだけ経っていたら、window に戻ってきた時点で更新する（時間ぎりで叩き続けるのはやめた）。秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+          </div>
+          <span class="hint warn" id="intervalout" hidden></span>
         </div>
-        <div class="fold" id="f-interval" hidden>
-          <span class="hint">これだけ経っていたら、window に戻ってきた時点で更新する（時間ぎりで叩き続けるのはやめた）。秒。<code>60*30</code> のように四則演算でも書ける。0 か空で自動更新を止める。</span>
+        <div class="field">
+          <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-quiet">自動更新を止める時間帯<span class="caret"></span></button>
+          <div class="times">
+            <input id="quietfrom" type="time" aria-label="自動更新を止める開始時刻">
+            <span class="to">〜</span>
+            <input id="quietto" type="time" aria-label="自動更新を止める終了時刻">
+          </div>
+          <div class="fold" id="f-quiet" hidden>
+            <span class="hint">この時間帯は自動更新しない。更新ボタンと <code>r</code> はいつでも効く。<code>19:00 〜 09:00</code> のように日をまたぐ指定もできる。空にすると止めない。</span>
+          </div>
+          <span class="hint" id="quietout"></span>
         </div>
-        <span class="hint warn" id="intervalout" hidden></span>
-      </div>
-      <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-quiet">自動更新を止める時間帯<span class="caret"></span></button>
-        <div class="times">
-          <input id="quietfrom" type="time" aria-label="自動更新を止める開始時刻">
-          <span class="to">〜</span>
-          <input id="quietto" type="time" aria-label="自動更新を止める終了時刻">
+        <div class="field">
+          <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-days">自動更新する曜日<span class="caret"></span></button>
+          <div class="repo-toggles" id="dayfilter"></div>
+          <div class="fold" id="f-days" hidden>
+            <span class="hint">押した時点で保存され、自動更新に反映される。</span>
+          </div>
+          <span class="hint" id="dayout"></span>
         </div>
-        <div class="fold" id="f-quiet" hidden>
-          <span class="hint">この時間帯は自動更新しない。更新ボタンと <code>r</code> はいつでも効く。<code>19:00 〜 09:00</code> のように日をまたぐ指定もできる。空にすると止めない。</span>
+        <div class="field">
+          <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-memodelay">tool-tip の表示待ち<span class="caret"></span></button>
+          <div class="slider">
+            <input id="memodelay" type="range" min="0" step="1" aria-label="tool-tip が出るまでの待ち時間">
+            <span class="val" id="memodelayout"></span>
+          </div>
+          <div class="fold" id="f-memodelay" hidden>
+            <span class="hint">メモのボタンに hover してから tool-tip が出るまでの待ち時間。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。日付の tool-tip は 0.1 秒固定で、ここには連動しない。</span>
+          </div>
         </div>
-        <span class="hint" id="quietout"></span>
-      </div>
-      <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-days">自動更新する曜日<span class="caret"></span></button>
-        <div class="repo-toggles" id="dayfilter"></div>
-        <div class="fold" id="f-days" hidden>
-          <span class="hint">押した時点で保存され、自動更新に反映される。</span>
-        </div>
-        <span class="hint" id="dayout"></span>
-      </div>
-      <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-memodelay">tool-tip の表示待ち<span class="caret"></span></button>
-        <div class="slider">
-          <input id="memodelay" type="range" min="0" step="1" aria-label="tool-tip が出るまでの待ち時間">
-          <span class="val" id="memodelayout"></span>
-        </div>
-        <div class="fold" id="f-memodelay" hidden>
-          <span class="hint">メモのボタンに hover してから tool-tip が出るまでの待ち時間。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。日付の tool-tip は 0.1 秒固定で、ここには連動しない。</span>
-        </div>
-      </div>
-      <div class="field">
-        <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-width">盤面の幅<span class="caret"></span></button>
-        <span class="hint">1列で出ているとき</span>
-        <div class="repo-toggles" id="widthfilter-one"></div>
-        <span class="hint">2列で出ているとき</span>
-        <div class="repo-toggles" id="widthfilter-two"></div>
-        <div class="fold" id="f-width" hidden>
-          <span class="hint">3つから選ぶ。数字は持たない —— 詰めたい幅は画面ごとに違うので、決めた形から選ぶほうが早い。押した時点で保存される。レーンが1本だけのとき・2本とも出ているときで別々に覚える。</span>
+        <div class="field">
+          <button class="sec" type="button" data-fold aria-expanded="false" aria-controls="f-width">盤面の幅<span class="caret"></span></button>
+          <span class="hint">1列で出ているとき</span>
+          <div class="repo-toggles" id="widthfilter-one"></div>
+          <span class="hint">2列で出ているとき</span>
+          <div class="repo-toggles" id="widthfilter-two"></div>
+          <div class="fold" id="f-width" hidden>
+            <span class="hint">3つから選ぶ。数字は持たない —— 詰めたい幅は画面ごとに違うので、決めた形から選ぶほうが早い。押した時点で保存される。レーンが1本だけのとき・2本とも出ているときで別々に覚える。</span>
+          </div>
         </div>
       </div>
     </section>
@@ -2791,16 +2809,12 @@ function renderLaneFilter() {
   }
 }
 
-/* 基本設定が埋まるまで使用設定は出さない。判定はトークンとリポジトリの2つだけ。
-   author は空でも成立する（自分の PR だけが出る）ので見ない。
-
-   トークンは「localStorage に保存できたか」ではなく、メモリの cfg.token で見る。
+/* トークンが入っているかは、どこでも「localStorage に保存できたか」ではなく
+   メモリの cfg.token で見る（使用設定を畳むかの判定は fillForm）。
    key.js が無いと保存はできないが、その画面を閉じるまでは普通に使えるので、
-   保存の成否で見ると使用設定が永久に隠れる。
+   保存の成否で見ると使用設定が永久に畳まれる。
    cfg.me も混ぜない —— /user が1往復するまで空なので、
-   トークンを入れた直後に使用設定が一瞬消えることになる。
-
-   リポジトリの方は逆に、打った値がそのまま盤面に効く欄なので画面側を見る */
+   トークンを入れた直後に判定がひっくり返ることになる */
 /* 「保存して更新」が書くのは基本設定の3つだけ（12）。3つとも cfg と同じなら
    押しても何も起きないので押せなくする。
    使用設定は触った時点で入るので、ここでは見ない。
@@ -2835,8 +2849,13 @@ function fillForm() {
   renderLaneFilter();
   paintSaveState();
   // 開閉は覚えない。開くたび全部閉じた状態から始まる（HTML の hidden 属性）。
-  // 例外はトークンだけ —— まだ入っていないなら開いた状態で見せる
-  fold($("sec-token"), !cfg.token);
+  // 例外はトークン周り —— まだ入っていないなら、欄も「取り方」も開いて見せる。
+  // そのあいだ使用設定は畳んでおく。トークンが入るまで触っても効かないので、
+  // 初見で最初に読むものが手順書になるようにする
+  const noToken = !cfg.token;
+  fold($("sec-token"), noToken);
+  fold($("tokenhelp"), noToken);
+  fold($("g-usage-head"), !noToken);
 }
 /* "09:00" を 540 に。読めなければ null */
 function parseHM(v) {
