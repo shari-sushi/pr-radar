@@ -8,3 +8,4 @@ key.js
 
 # 配信ポート。端末ごとに違うものを選べる。run.sh が last= を書き足す。
 port.local
+.vercel
