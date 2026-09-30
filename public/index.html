@@ -3735,6 +3735,9 @@ document.addEventListener("mouseleave", (e) => {
   if (chip) hoverPrRows(chip, false);
 }, true);
 function hoverPrRows(chip, on) {
+  // 未選択（外している）チップに hover しても、当たる行が1枚も無いので
+  // 盤面が一律に沈むだけになる。それでは絞り込みにならないので何もしない。
+  if (chip.getAttribute("aria-pressed") === "false") return;
   const attr = chip.classList.contains("who") ? "author" : "repo";
   const val = attr === "author" ? chip.dataset.person : chip.dataset.repo;
   if (!val) return;
