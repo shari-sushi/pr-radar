@@ -236,12 +236,21 @@
   .memo-head .pr .m, .ops-head .pr .m { padding-right: 0; }
   /* カードのフッターの下。左端はカードの本文に揃える */
   .memo-head .wait-tag { margin: -2px 14px 12px; }
+  /* ページメモの見出し。PR カードの代わりに置く小さなタイトル */
+  .note-title {
+    padding: 12px 14px; font-family: var(--mono); font-size: 12px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+  }
   .memo textarea {
     font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
     padding: 12px 14px; border: 0; background: var(--panel); color: var(--ink);
     width: 100%; min-height: 220px; resize: vertical;
   }
   .memo textarea:focus { outline: none; }
+
+  /* ページメモは書き物の場なので、PR メモより広く・高くとる */
+  #note { width: min(900px, 100%); }
+  #notetext { min-height: min(70vh, 560px); }
 
   /* 行の歯車で開く操作。押せるかどうかはその時の PR 次第なので、
      灰色にするだけで済ませず、理由を必ず下の行に出す */
@@ -1104,6 +1113,14 @@
     </div>
   </div>
 
+  <!-- ページに1つだけのメモ（m で開く）。PR ごとのメモとは別物 -->
+  <div class="memo-scrim" id="notescrim" hidden>
+    <div class="memo" id="note" role="dialog" aria-modal="true" aria-label="全体メモ">
+      <div class="memo-head"><div class="note-title">全体メモ</div></div>
+      <textarea id="notetext" spellcheck="false" placeholder="このページ全体のメモ。外側を押すと保存して閉じます"></textarea>
+    </div>
+  </div>
+
   <div class="ops-log" id="opslog" hidden></div>
 
   <div class="ops-scrim" id="opsscrim" hidden>
@@ -1116,7 +1133,7 @@
     </div>
   </div>
 
-  <p class="kbd"><kbd>r</kbd> 更新 &nbsp; <kbd>s</kbd> 設定</p>
+  <p class="kbd"><kbd>r</kbd> 更新 &nbsp; <kbd>s</kbd> 設定 &nbsp; <kbd>m</kbd> 全体メモ</p>
 </div>
 
 <!-- この端末だけにある暗号鍵。run.sh が初回起動時に作る。git 管理外。 -->
@@ -2876,6 +2893,35 @@ function closeMemo() {
 /* 外側だけで閉じる。カードのリンクや textarea を押しても閉じない */
 $("memoscrim").onclick = (e) => { if (e.target === $("memoscrim")) closeMemo(); };
 
+/* ---------- ページに1つだけのメモ。PR ごとのメモとは完全に別物 ---------- */
+/* 本文なので、印や PR メモとは別のキーに置く。中身はただの文字列 */
+const NOTE_KEY = "pr-radar:note";
+function readNote() {
+  try { return localStorage.getItem(NOTE_KEY) || ""; } catch (e) { return ""; }
+}
+function writeNote(text) {
+  try { localStorage.setItem(NOTE_KEY, text); }
+  catch (e) {
+    showAlert("保存できませんでした",
+      "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
+  }
+}
+const noteOpen = () => !$("notescrim").hidden;
+function openNote() {
+  $("notetext").value = readNote();
+  $("notescrim").hidden = false;
+  document.body.classList.add("locked");
+  $("notetext").focus();
+}
+/* 保存ボタンは置かない。閉じる ＝ 保存（PR メモと同じ作法） */
+function closeNote() {
+  if (!noteOpen()) return;
+  writeNote($("notetext").value);
+  $("notescrim").hidden = true;
+  document.body.classList.remove("locked");
+}
+$("notescrim").onclick = (e) => { if (e.target === $("notescrim")) closeNote(); };
+
 /* ---------- 行の歯車。1件ごとの操作 ---------- */
 /* draft かどうかは調べに行かない。待ちの欄に居れば draft ではないし、
    下書きの欄に居れば draft —— 盤面がすでに知っていることで、
@@ -3641,15 +3687,18 @@ document.addEventListener("keydown", (e) => {
   // Esc は入力欄の中からも効かせる
   if (e.key === "Escape" && opsOpen()) { closeOps(); return; }
   if (e.key === "Escape" && memoOpen()) { closeMemo(); return; }
+  if (e.key === "Escape" && noteOpen()) { closeNote(); return; }
   if (e.key === "Escape" && settingsOpen()) { setSettings(false); return; }
   if (e.key === "Escape" && selOn) { closeSelect(); return; }
-  if (memoOpen() || opsOpen()) return;   // メモ・操作を開いている間は r / s を拾わない
+  if (memoOpen() || opsOpen() || noteOpen()) return;   // メモ・操作を開いている間は r / s を拾わない
   // 選んでいる間も拾わない。r は refresh で、選んだ途中が消える
   if (selOn) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (e.key === "r") refresh();
   if (e.key === "s") setSettings(!settingsOpen());
+  // m は、このページに1つだけのメモ。PR ごとのメモとは別物
+  if (e.key === "m") { e.preventDefault(); noteOpen() ? closeNote() : openNote(); }
 });
 
 /* who / repo のチップを hover したら、対応するカードを光らせる。
