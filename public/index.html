@@ -2459,8 +2459,15 @@ function renderLane(lane, prs, emptyMsg) {
   syncLanes();
 }
 
-/* 一覧のテキスト。1件2行で、1行目はタイトル、2行目は全角スペース下げで URL */
+/* 一覧のテキスト。1件2行で、1行目はタイトル、2行目は全角スペース下げで URL。
+   ただし1件だけのときは、1行目をブランチ名にする（そのまま貼って動かしやすい）。
+   ブランチ名が取れない（未更新の PR 等）ときは通常の書式に落とす */
 function listText(prs) {
+  if (prs.length === 1) {
+    const pr = prs[0];
+    const head = pr.head && pr.head.ref;
+    if (head) return "- " + head + "\n　" + pr.html_url;
+  }
   return prs.map((pr) =>
     "- " + pr.base.repo.name + " #" + pr.number + " " + pr.title + "\n　" + pr.html_url
   ).join("\n");
