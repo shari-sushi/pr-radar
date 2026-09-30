@@ -36,6 +36,11 @@
 
   body {
     margin: 0;
+    /* 横には伸ばさない。閉じた引き出し（画面の外へ退かしてある）や、
+       隠れている吹き出しがはみ出すと、スマホでは層ごと横に広がって
+       「開いたらページが大きくなった」に見える。clip は hidden と違って
+       スクロールの器を作らないので、position: fixed はそのまま効く */
+    overflow-x: clip;
     background: var(--bg);
     color: var(--ink);
     font-family: var(--sans);
@@ -210,6 +215,10 @@
     padding: 20px 18px 24px;
     display: grid; gap: 20px; align-content: start;
     overflow-y: auto; overscroll-behavior: contain;
+    /* 縦だけ流す。隠れている吹き出し（.tip の ::after は max-content で
+       320px まで伸びる）が右にはみ出しており、放っておくと引き出しごと
+       横に流れる。切られるのは畳んだ中の説明と同じ文なので、失うものはない */
+    overflow-x: clip;
     transform: translateX(100%); visibility: hidden;
     transition: transform .18s ease, visibility .18s;
   }
@@ -883,6 +892,9 @@
   .filters {
     display: flex; align-items: center; gap: 18px; flex: none;
     overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+    /* スクロールバーの居場所。行の高さが中身ちょうどだと、出てきた棒が
+       チップの上に重なって、押す場所の下端が読めなくなる */
+    padding-bottom: 6px;
   }
   .fgroup { display: flex; align-items: center; gap: 7px; flex: none; }
   .fgroup[hidden] { display: none; }
@@ -934,6 +946,36 @@
 
   .kbd { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-top: 26px; text-align: center; }
   .kbd kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--panel); }
+
+  /* ---------- 狭い画面 ---------- */
+  /* 幅を決め打ちで切るのはここだけ。1行目の並び（.stack）は測って決めているが、
+     スマホは「どう測っても入らない」ので、先に詰める側を用意しておく */
+  @media (max-width: 560px) {
+    .wrap { padding: 12px 10px 40px; }
+    /* 隙間と字を詰めれば 題名 / タブ / 更新 / ☰ は1行に残る。
+       ☰ だけが次の行へ落ちると、いちばん押すものが盤面から遠くなる */
+    .top { gap: 8px; padding-bottom: 10px; margin-bottom: 12px; }
+    .wordmark { font-size: 13px; letter-spacing: .12em; }
+    .tab { padding: 4px 9px; }
+    .bar { margin-top: -6px; }
+    /* レーンの帯は左の柱をやめて、上に寝かせる。縦書きの見出しは
+       1件しかないレーンでも柱のぶんだけ背が高くなる。
+       どのレーンを読んでいるかは狭い画面ほど見失うので、
+       そのレーンが画面にいるあいだは上に貼り付けておく */
+    .lane { grid-template-columns: 1fr; }
+    .rail {
+      position: sticky; top: 0; z-index: 3;
+      flex-direction: row; align-items: baseline; justify-content: flex-start;
+      gap: 10px; padding: 7px 12px;
+    }
+    .rail .n { font-size: 15px; }
+    .rail .lbl { writing-mode: horizontal-tb; font-size: 12px; letter-spacing: .18em; }
+    .rail .lbl.en { font-size: 11px; letter-spacing: .06em; }
+    /* 題と「repo #番号」を横に並べると、題が数文字ずつに折り返される。
+       番号は次の行の右へ落として、題に幅を全部渡す */
+    .pr { grid-template-columns: 1fr; }
+    .pr .num { justify-self: end; }
+  }
 
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
@@ -2092,7 +2134,10 @@ function fitTop() {
   const top = document.querySelector(".top");
   const group = top.querySelector(".fgroup");
   if (!group) return;
-  const GAP = 14, LABEL_GAP = 7, CHIP_GAP = 6;
+  // 隙間は CSS から読む。狭い画面では詰めてあるので、決め打ちだと
+  // 「入らない」と読み違えて repo を下ろしてしまう
+  const GAP = parseFloat(getComputedStyle(top).columnGap) || 14;
+  const LABEL_GAP = 7, CHIP_GAP = 6;
   const scope = $("scope");
   const groupWidth = [...group.children]
     .reduce((w, el) => w + (el === scope ? rowWidth(scope, CHIP_GAP) : el.offsetWidth), 0) +
