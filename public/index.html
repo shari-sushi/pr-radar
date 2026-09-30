@@ -2205,7 +2205,9 @@ async function refresh() {
     setTokenTrouble(true);
     showAlert(tokenNote ? "トークンを読み込めませんでした" : "アクセストークンがまだ入っていません",
       tokenNote || "設定を開いてトークンを入れると、プライベートリポジトリのPRが読めるようになります。");
-    if (!autoOpened) { autoOpened = true; setSettings(true); }
+    // 開いた状態で始めるのではなく、一拍おいてから開き始める。
+    // 引き出しが出てくるところが見えれば、これが ☰ の中身だと分かる
+    if (!autoOpened) { autoOpened = true; setTimeout(() => setSettings(true), 200); }
     LANES.forEach((l) => renderLane(l, null, "トークンを入れると表示されます"));
     return;
   }
@@ -2872,7 +2874,9 @@ function fillForm() {
   fold($("sec-token"), noToken);
   fold($("g-usage-head"), !noToken);
   clearTimeout(helpTimer);
-  if (noToken) helpTimer = setTimeout(revealTokenHelp, 500);
+  // 引き出しが開き始めるのが 0.2 秒後、出きるのがその 0.18 秒後（refresh / .settings）。
+  // 取り方が開くのはそこからさらに一拍おいて ―― 動きが重ならないようにする
+  if (noToken) helpTimer = setTimeout(revealTokenHelp, 700);
   else fold($("tokenhelp"), false);
 }
 /* 「トークンの取り方」を、少し遅れて自分から開く。引き出しが出きってから動くので
