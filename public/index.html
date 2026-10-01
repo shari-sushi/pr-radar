@@ -373,6 +373,12 @@
   .drawer-head .ioact { display: inline-flex; align-items: center; justify-content: center; }
   .drawer-head .ioact svg { width: 15px; height: 15px; }
   .drawer-head .ioact[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); }
+  /* 言葉の切り替え。io の2つと同じ並びに置くが、中身がアイコンではなく字なので
+     幅と字の大きさだけ変える。いま出ているのが、いまの言葉 */
+  .drawer-head .langbtn {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    padding: 0 8px; width: auto;
+  }
   .drawer-head .ioact.done { color: var(--ready); border-color: var(--ready); }
   .drawer-head .ioact.fail { color: var(--review); border-color: var(--review); }
   /* 貼り付け欄。設定のどのかたまりにも属さないので、見出しの直下に置く */
@@ -1063,6 +1069,7 @@
       <span class="io-acts">
         <button class="ioact" id="iocopy" type="button" aria-label="設定を JSON でコピー" title="トークン以外の設定を JSON でコピー"></button>
         <button class="ioact" id="ioimport" type="button" aria-label="JSON を貼り付けて取り込む" title="JSON を貼り付けて取り込む" aria-expanded="false" aria-controls="iobox"></button>
+        <button class="ioact langbtn" id="lang" type="button"></button>
       </span>
       <button id="close" aria-label="閉じる">✕</button>
     </div>
@@ -1254,6 +1261,390 @@
      公開ホストには無いので 404 になる（コンソールに出るだけ）。それで plainStore に切り替わる -->
 <script src="key.js"></script>
 <script>
+/* ---------- 言葉（日本語 / English） ---------- */
+/* 辞書のキーは日本語そのもの。"ops.update" のような符牒にしない —— 符牒だと
+   コードを読むときに何が出るのか分からなくなるし、訳し漏れが画面に符牒のまま
+   出る。日本語をキーにしておけば、英語が無いところは日本語のまま出て読める。
+   {0} {1} は後から埋める穴。英語は語順が違うので、文を切って連結するのでは
+   なく、穴の空いた1つの文にして渡す */
+/* 英語。キーは日本語そのもの。ここに無いものは日本語のまま出る */
+const EN = {
+  /* ---- 盤面・ヘッダー ---- */
+  "PRレーダー": "PR Radar",
+  "すべてのリポジトリを表示": "Show all repositories",
+  "読み込み待ち": "Waiting",
+  "読み込み中…": "Loading…",
+  "前回の内容": "Last session",
+  "停止中": "Paused",
+  "更新": "Refresh",
+  "更新 <b>{0}</b>": "Updated <b>{0}</b>",
+  "自動更新 停止中": "auto-refresh paused",
+  "残 {0}": "{0} left",
+  "設定": "Settings",
+  "全体メモ": "Notes",
+  "閉じる": "Close",
+  "もっと見る": "Show more",
+  "これ以上ありません": "Nothing more",
+  "リポジトリ未設定": "No repositories",
+  "リポジトリを入れると、ここに並びます。": "Add repositories and they show up here.",
+  "リポジトリをすべて非表示にしています。": "All repositories are hidden.",
+  "アクセストークンがまだ入っていません": "No access token yet",
+  "設定を開いてトークンを入れると、プライベートリポジトリのPRが読めるようになります。":
+    "Open Settings and add a token to read PRs in private repositories.",
+  "トークンを入れると表示されます": "Shows up once a token is set",
+
+  /* ---- レーンの名前（縦の帯） ---- */
+  "待ち": "Ready",
+  "下書": "Draft",
+  "依頼": "Req",
+  "閉": "Closed",
+
+  /* ---- 絞り込みの帯 ---- */
+  "「待ち」も出している — 押すと隠す": "Showing waiting PRs — click to hide",
+  "「待ち」を隠している — 押すと出す": "Hiding waiting PRs — click to show",
+  "伏せたPRも出している — 押すと隠す": "Showing hidden PRs — click to hide",
+  "伏せたPRを隠している — 押すと出す": "Hiding hidden PRs — click to show",
+  "{0}も出している — 押すと隠す": "Showing {0} — click to hide",
+  "{0}を隠している — 押すと出す": "Hiding {0} — click to show",
+  "merge した PR ": "merged PRs",
+  "merge せずに閉じた PR ": "PRs closed without merging",
+
+  /* ---- カード ---- */
+  "作成 {0}": "Opened {0}",
+  "更新 {0}": "Updated {0}",
+  "不明": "unknown",
+  "たった今": "just now",
+  "{0}分前": "{0}m ago",
+  "{0}時間前": "{0}h ago",
+  "{0}日前": "{0}d ago",
+  "{0}か月前": "{0}mo ago",
+  "{0}日 停滞": "{0}d idle",
+  "ブランチ名をコピー": "Copy branch name",
+  "押すといまの数を覚える": "Click to mark these counts as seen",
+  "前に見たとき comment: {0} review: {1} inline: {2} — 押すといまの数を覚える":
+    "Last seen comment: {0} review: {1} inline: {2} — click to mark as seen",
+  "メモ": "Note",
+  "メモを書く": "Write a note",
+  "待ちの印を付ける": "Mark as waiting",
+  "この PR を伏せる": "Hide this PR",
+  "伏せているのを戻す": "Unhide this PR",
+  "{0} — 押すと伏せる": "{0} — click to hide",
+  "{0} — 押すと戻す": "{0} — click to unhide",
+  "この PR の操作": "Actions for this PR",
+  "draft の出し入れ / update branch / この1件をコピー": "Toggle draft / update branch / copy this one",
+
+  /* ---- 選んでコピー ---- */
+  "この一覧から選んでコピー": "Pick from this lane and copy",
+  "レビュー依頼の文面ごと、選んでコピー": "Pick and copy with the review request text",
+  "出ている分をすべて選ぶ": "Select everything shown",
+  "選択をすべて外す": "Clear the selection",
+  "全選択": "Select all",
+  "全解除": "Clear",
+  "コピー {0}件": "Copy {0}",
+  "選ぶのをやめる": "Stop selecting",
+  "やめる": "Cancel",
+
+  /* ---- メモ ---- */
+  "この PR のメモ": "Note on this PR",
+  "この PR についてのメモ。外側を押すと保存して閉じます":
+    "A note on this PR. Click outside to save and close.",
+  "このページ全体のメモ。外側を押すと保存して閉じます":
+    "A note for this page. Click outside to save and close.",
+
+  /* ---- 1件の操作（歯車） ---- */
+  "draft に戻す": "Back to draft",
+  "draft を解除": "Mark ready",
+  "draft 化": "to draft",
+  "draft 解除": "mark ready",
+  "押すと draft に戻す。レビューの依頼からは外れる":
+    "Puts it back to draft. It drops out of review requests.",
+  "押すと draft を解除して、レビューに出す": "Marks it ready and puts it up for review.",
+  "状態を読めていない": "Could not read the state",
+  "merge 済みの PR": "Already merged",
+  "閉じた PR": "Closed PR",
+  "コンフリクトの有無と、base からの遅れを、いま調べている":
+    "Checking for conflicts and how far behind base it is",
+  "コンフリクトがある。update branch は base を取り込む操作なので、これでは解けない":
+    "There is a conflict. update branch only pulls base in, so it cannot resolve this.",
+  "base より遅れているかを読めなかった": "Could not read whether it is behind base",
+  "base（{0}）より {1} コミット遅れ": "{1} commits behind base ({0})",
+  "base に追いついている": "Up to date with base",
+  "この1件を、一覧と同じ書式でコピー": "Copy this one in the same format as the lane",
+  "この PR 1件をコピー": "Copy this PR",
+  "draft にしています…": "Putting it back to draft…",
+  "draft にしました。": "Back to draft.",
+  "draft にできませんでした": "Could not put it back to draft",
+  "draft を解除しています…": "Marking it ready…",
+  "draft を解除しました。": "Marked ready.",
+  "draft を解除できませんでした": "Could not mark it ready",
+  "base を取り込んでいます…": "Pulling base in…",
+  "base を取り込みました。": "Pulled base in.",
+  "base を取り込めませんでした": "Could not pull base in",
+  "この PR の id を読めませんでした": "Could not read this PR's id",
+  "処理中…": "running…",
+  "処理完了": "done",
+  "エラー: {0}": "error: {0}",
+  "この PR が見つかりません。消されたか、権限が変わっています。":
+    "This PR is gone — deleted, or your access changed.",
+  "base からの遅れを読めませんでした（{0}）。": "Could not read how far behind base it is ({0}).",
+
+  /* ---- 1件の操作：読む側 ---- */
+  "読み中…": "reading…",
+  "読めませんでした": "could not read",
+  "コンフリクト": "Conflict",
+  "あり": "yes",
+  "なし": "none",
+  "判定中": "checking",
+  "base を取り込んでも解けません。手元で直して push が要ります":
+    "Pulling base in will not fix it. Resolve it locally and push.",
+  "GitHub がまだ判定していません": "GitHub has not decided yet",
+  "ここが「あり」のあいだ update branch は押せない。base を入れても解けないため":
+    "While this says yes, update branch stays disabled — pulling base in cannot fix it",
+  "遅れ": "Behind",
+  "base の側に、この PR が持っていないコミットが何個あるか":
+    "How many commits base has that this PR does not",
+  "状態": "State",
+  "GitHub が返した値をそのまま出している": "the raw value GitHub returned",
+  "GitHub の mergeable_state。merge を止めているものが何かを1語で言う":
+    "GitHub's mergeable_state — one word for what is blocking the merge",
+  "merge できる": "can be merged",
+  "merge できる（merge のとき hook が走る）": "can be merged (a hook runs on merge)",
+  "コンフリクトがある": "there is a conflict",
+  "base より遅れている（追いつくまで merge できない設定）":
+    "behind base (cannot merge until it catches up)",
+  "必須のレビューかチェックが揃っていない": "a required review or check is missing",
+  "必須でないチェックが落ちている（merge 自体はできる）":
+    "a non-required check is failing (merging still works)",
+  "draft のあいだは merge の可否を判定しない": "while it is a draft, mergeability is not decided",
+  "GitHub がまだ判定していない": "GitHub has not decided yet",
+  "差分": "Diff",
+  "{0} ファイル": "{0} files",
+  "足した行 / 消した行 / 触ったファイル数。レビューを頼む順を決める材料":
+    "Lines added / removed and files touched — what to order review requests by",
+  "コミット": "Commits",
+  "{0} コミット": "{0} commits",
+  "base より {0} 進み": "{0} ahead of base",
+  "この PR が積んでいるコミット数と、base から見て進んでいる数":
+    "How many commits this PR carries, and how far ahead of base it is",
+  "有効（{0}）": "on ({0})",
+  "有効なら、条件が揃った時点で GitHub が勝手に merge する。督促は要らない":
+    "If on, GitHub merges it as soon as the conditions are met — no need to chase it",
+  "レビュー依頼": "Reviewers",
+  "まだ返していない依頼先。返した人はここから消える":
+    "Requests not answered yet — people drop off once they review",
+  "できる": "yes",
+  "できない": "no",
+  "update branch（merge commit）が使えないときに、rebase なら入るか":
+    "Whether a rebase would land it when update branch (a merge commit) will not",
+
+  /* ---- 設定：見出しと入出力 ---- */
+  "使用設定": "Usage",
+  "基本設定": "Basics",
+  "ここは触った時点で保存されます。": "Changes here save as you make them.",
+  "保存には保存ボタンを押す": "Press save to keep these",
+  "保存して更新": "Save and refresh",
+  "変更はありません": "No changes",
+  "設定を JSON でコピー": "Copy settings as JSON",
+  "トークン以外の設定を JSON でコピー": "Copy settings (without the token) as JSON",
+  "JSON を貼り付けて取り込む": "Paste JSON to import",
+  "取り込む": "Import",
+  "取り込む JSON": "JSON to import",
+  "貼り付けて「取り込む」を押すと、この端末の設定を置き換えて読み込み直す。トークンは入っていないので、移した先で入れ直す。":
+    "Paste and press Import to replace this device's settings and reload. The token is not included, so enter it again on the new device.",
+  "JSON として読めません（{0}）": "Not readable as JSON ({0})",
+  "いちばん外側が { } のかたちではありません": "The outermost value is not a { } object",
+  "`{0}` が { } のかたちではありません": "`{0}` is not a { } object",
+  "取り込めるものがありません（{0}）": "Nothing to import ({0})",
+  "日本語に切り替える": "日本語に切り替える",
+
+  /* ---- 設定：盤面の幅 ---- */
+  "盤面の幅": "Board width",
+  "1列で出ているとき": "With one lane",
+  "2列で出ているとき": "With two lanes",
+  "スマホくらいの幅。画面が広くても1列に畳む": "Phone width. Folds to one column even on a wide screen.",
+  "1280px で中央に寄せる（いままでと同じ）": "Centered at 1280px (the original).",
+  "画面いっぱい。左右に padding だけ残す": "Full width, with only side padding left.",
+  "3つから選ぶ。数字は持たない —— 詰めたい幅は画面ごとに違うので、決めた形から選ぶほうが早い。押した時点で保存される。レーンが1本だけのとき・2本とも出ているときで別々に覚える。":
+    "Pick one of three. No numbers — the width you want differs per screen, so picking a shape is faster. Saves as you click, and is remembered separately for one lane and for two.",
+
+  /* ---- 設定：tool-tip ---- */
+  "tool-tip の表示待ち": "Tool-tip delay",
+  "tool-tip が出るまでの待ち時間": "How long before a tool-tip appears",
+  "すぐ": "none",
+  "{0} 秒": "{0}s",
+  "メモのボタンに hover してから tool-tip が出るまでの待ち時間。1秒までは0.1秒刻み、そこから5秒までは0.5秒刻み。0 で待たずに出る。動かした時点で保存される。日付の tool-tip は 0.1 秒固定で、ここには連動しない。":
+    "How long after hovering the note button before the tool-tip shows. 0.1s steps up to 1s, then 0.5s steps up to 5s. 0 shows it right away. Saves as you drag. The date tool-tip is fixed at 0.1s and does not follow this.",
+
+  /* ---- 設定：盤面の絞り込み ---- */
+  "盤面の上の帯にあるものと同じ絞り込み。押した時点で盤面に反映される。":
+    "The same filters as the strip above the board. Takes effect as you click.",
+  "出すリポジトリ": "Repositories shown",
+
+  /* ---- 設定：自動更新 ---- */
+  "自動更新": "Auto-refresh",
+  "自動更新なし": "No auto-refresh",
+  "これだけ経っていたら、window に戻ってきた時点で更新する（時間ぎりで叩き続けるのはやめた）。秒。":
+    "If this much time has passed, refresh when you come back to the window (it no longer polls on a timer). Seconds.",
+  "のように四則演算でも書ける。0 か空で自動更新を止める。":
+    " — arithmetic works too. 0 or empty turns auto-refresh off.",
+  "式として読めません": "Not a readable expression",
+  "15秒未満です": "Less than 15 seconds",
+  "15秒未満なので自動更新しません": "Under 15 seconds, so auto-refresh stays off",
+  "= {0}秒": "= {0}s",
+  "= {0}秒 — 自動更新なし": "= {0}s — no auto-refresh",
+  "= {0}秒（{1}）": "= {0}s ({1})",
+  "{0}秒": "{0}s",
+  "{0}分": "{0}m",
+  "{0}分{1}秒": "{0}m {1}s",
+  "{0}時間": "{0}h",
+  "{0}時間{1}分": "{0}h {1}m",
+  "自動更新する曜日": "Days to auto-refresh",
+  "押した時点で保存され、自動更新に反映される。": "Saves as you click and takes effect right away.",
+  "1つも選ばれていません。このままだと自動更新しません":
+    "Nothing selected — auto-refresh will not run",
+  "毎日": "Every day",
+  "{0} に動く": "Runs on {0}",
+  "日": "Sun", "月": "Mon", "火": "Tue", "水": "Wed", "木": "Thu", "金": "Fri", "土": "Sat",
+  "・": ", ",
+  "自動更新を止める時間帯": "Quiet hours",
+  "自動更新を止める開始時刻": "Quiet hours start",
+  "自動更新を止める終了時刻": "Quiet hours end",
+  "この時間帯は自動更新しない。更新ボタンと": "No auto-refresh during these hours. The refresh button and ",
+  "はいつでも効く。": " always work. ",
+  "のように日をまたぐ指定もできる。空にすると止めない。":
+    " can cross midnight. Leave it empty to never pause.",
+  "止めない": "Never pauses",
+  "開始と終了の両方を入れてください（片方だけでは止まりません）":
+    "Fill in both start and end (one alone does not pause anything)",
+  "開始と終了が同じです（止まりません）": "Start and end are the same (nothing pauses)",
+  "{0} 〜 {1}{2} は自動更新しない": "No auto-refresh from {0} to {1}{2}",
+  "（翌日）": " (next day)",
+
+  /* ---- 設定：追う人・リポジトリ ---- */
+  "追う人": "People to follow",
+  "自分": "You",
+  "自分は、トークンを保存すると一覧に出ます。": "You show up here once a token is saved.",
+  "自分以外で追う人の GitHub ID。複数はカンマか改行で区切る。ここに載せていない人の PR は「ほかの人のPR」に回る。打った時点で盤面に反映されるが、残すには「保存して更新」を押す。":
+    "GitHub IDs to follow besides your own, separated by commas or newlines. PRs by anyone not listed go to the unlisted lane. Typing updates the board, but press Save and refresh to keep it.",
+  "チェックを入れた人の PR が「自分たちのPR」に出る。外した人の PR は盤面から消える（自分にレビュー依頼が来ているものだけは残る）。":
+    "PRs by checked people show in your lanes. Unchecking removes them from the board (except ones where review is requested from you).",
+  "リポジトリ": "Repositories",
+  "owner/repo を1行ずつ。打った時点で盤面に反映されるが、残すには「保存して更新」を押す。":
+    "One owner/repo per line. Typing updates the board, but press Save and refresh to keep it.",
+  "＋ 追加する": "+ Add",
+  "いまは空です。": "Empty for now.",
+  "（見つからない／権限なし）": "(not found / no access)",
+  "を": " ",
+  "）は": ") ",
+  "だけです。": " only.",
+
+  /* ---- 設定：トークン ---- */
+  "アクセストークン": "Access token",
+  "トークンの取り方 ?": "How to get a token ?",
+  "トークンを消す": "Forget the token",
+  "接続テスト": "Test connection",
+  "確認中…": "Checking…",
+  "トークンが空です。入力してからもう一度押してください。":
+    "The token is empty. Enter one and press again.",
+  "トークンが無効か期限切れです。発行し直してください。":
+    "The token is invalid or expired. Issue a new one.",
+  "認証できました — @{0}": "Signed in — @{0}",
+  "GitHubに接続できません（{0}）": "Cannot reach GitHub ({0})",
+  "@{0} が見つかりません。GitHub IDの綴りを確認してください。":
+    "@{0} not found. Check the spelling of the GitHub ID.",
+  "{0} — 開いているPR {1}件": "{0} — {1} open PRs",
+  "見つかりません。リポジトリ名か、トークンの対象リポジトリに入っているか確認してください。":
+    "Not found. Check the repository name, and that the token covers it.",
+  "権限が足りません。Pull requests: Read か、SSOの認可を確認してください。":
+    "Not enough access. Check Pull requests: Read, and SSO authorization.",
+  "1時間あたりの残り呼び出し回数 {0}": "{0} API calls left this hour",
+  "トークンが無効です": "The token is invalid",
+  "GitHubに接続できませんでした": "Could not reach GitHub",
+  "設定から入れ直してください。期限切れか、スコープに <code>repo</code> が入っていない可能性があります。":
+    "Enter it again in Settings. It may be expired, or missing the <code>repo</code> scope.",
+  "少し待ってから更新を押してください。": "Wait a moment and press refresh.",
+  "読めなかったリポジトリがあります": "Some repositories could not be read",
+  "設定とトークンはこのブラウザに保存されます。トークンの送信先は":
+    "Settings and the token are stored in this browser. The token is only ever sent to ",
+  "トークンを読み込めませんでした": "Could not load the token",
+  "保存されていたトークンを復号できませんでした。key.js が作り直されたのかもしれません。入れ直してください。":
+    "Could not decrypt the saved token. key.js may have been regenerated. Please enter it again.",
+  "設定を保存できませんでした": "Could not save settings",
+  "トークンを保存できませんでした": "Could not save the token",
+  "保存できませんでした": "Could not save",
+  "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。":
+    "Private browsing, or the browser is refusing site data. It holds until you close this page.",
+  "安全なコンテキストで開かれていないため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動して http://127.0.0.1:49787/ から開いてください。":
+    "Not a secure context, so the token cannot be saved (it holds until you close this page). Start with ./run.sh and open http://127.0.0.1:49787/.",
+  "key.js が無いか壊れているため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動すると自動生成されます。":
+    "key.js is missing or broken, so the token cannot be saved (it holds until you close this page). ./run.sh generates one for you.",
+
+  /* ---- トークンの取り方（手順） ---- */
+  "を開く（Fine-grained token）": " (Fine-grained token)",
+  "— 対象リポジトリを持つ organization（個人リポジトリなら自分）":
+    "— the organization that owns the repositories (yourself, for personal ones)",
+  "— 短めに。90日など": "— keep it short, e.g. 90 days",
+  "— Only select repositories → 盤面に出すリポジトリだけ":
+    "— Only select repositories → just the ones on your board",
+  "。これだけ。歯車から draft の出し入れ / update branch を使うなら":
+    ". That is all. For toggling draft / update branch from the gear, use ",
+  "→ 出てきた値をこの欄に貼る": "→ paste the value it gives you into this field",
+  "は自動で付く（外せない）。": " comes along automatically (it cannot be removed). ",
+  "は付けないこと —— 付けるとリポジトリを丸ごと落とせるトークンになる。":
+    " must not be added — with it the token can clone the whole repository.",
+  "スコープに書き込み権限まで含むので使わない。":
+    " scope includes write access, so it is not used here.",
+  "org の設定によっては、発行後にオーナーの承認待ちになる。SAML SSO が必須なら Configure SSO で認可する。":
+    "Depending on the org, a new token may wait for owner approval. If SAML SSO is required, authorize it under Configure SSO."
+};
+
+const LANG_KEY = "pr-radar:lang";
+let lang = "ja";
+try { if (localStorage.getItem(LANG_KEY) === "en") lang = "en"; } catch (e) { lang = "ja"; }
+
+/* 名前が t でないのは、既に別の意味で t を使っている場所があるため */
+function tr(ja) {
+  let out = lang === "en" && EN[ja] ? EN[ja] : ja;
+  if (arguments.length > 1) {
+    const args = arguments;
+    out = out.replace(/\{(\d+)\}/g, (m, i) => {
+      const v = args[Number(i) + 1];
+      return v === undefined || v === null ? m : String(v);
+    });
+  }
+  return out;
+}
+
+/* マークアップに直接書いた日本語。原文をここで1度だけ控えて、切り替えのたびに
+   控えから引き直す。HTML 側に data-* を撒く手もあるが、そうすると同じ文言が
+   マークアップと辞書の2か所に散る。控えておけば置き場所は1つで済む */
+const staticText = [];
+function snapStatic(root) {
+  const JP = /[ぁ-んァ-ヶ一-龯]/;
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+    if (node.nodeType === 3) {
+      if (!JP.test(node.nodeValue)) continue;
+      // 前後の空白と改行は原文のまま残す。訳すのは中身だけ
+      const m = node.nodeValue.match(/^(\s*)([\s\S]*?)(\s*)$/);
+      staticText.push({ node: node, attr: "", pre: m[1], ja: m[2], post: m[3] });
+      continue;
+    }
+    for (const a of ["title", "aria-label", "placeholder", "data-tip"]) {
+      const v = node.getAttribute && node.getAttribute(a);
+      if (v && JP.test(v)) staticText.push({ node: node, attr: a, pre: "", ja: v, post: "" });
+    }
+  }
+}
+function applyStatic() {
+  for (const it of staticText) {
+    // 描き直しで外れたところは触らない（そこは t() を通って出てくる側）
+    if (!it.node.isConnected) continue;
+    if (it.attr) it.node.setAttribute(it.attr, tr(it.ja));
+    else it.node.nodeValue = it.pre + tr(it.ja) + it.post;
+  }
+}
+
 const DEFAULTS = {
   token: "",
   mates: "",
@@ -1358,11 +1749,11 @@ async function initCrypto() {
     return;
   }
   if (!window.crypto || !crypto.subtle) {
-    cryptoNote = "安全なコンテキストで開かれていないため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動して http://127.0.0.1:49787/ から開いてください。";
+    cryptoNote = tr("安全なコンテキストで開かれていないため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動して http://127.0.0.1:49787/ から開いてください。");
     return;
   }
   if (typeof hex !== "string" || !/^[0-9a-f]{64}$/i.test(hex)) {
-    cryptoNote = "key.js が無いか壊れているため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動すると自動生成されます。";
+    cryptoNote = tr("key.js が無いか壊れているため、トークンを保存できません（この画面を閉じるまでは有効）。./run.sh で起動すると自動生成されます。");
     return;
   }
   const raw = Uint8Array.from(hex.match(/../g), (h) => parseInt(h, 16));
@@ -1472,7 +1863,7 @@ async function saveConfig() {
     }
   } catch (e) {
     showAlert("トークンを保存できませんでした",
-      "プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。");
+      tr("プライベートブラウジングか、ブラウザがサイトデータを拒否しています。この画面を閉じるまでは有効です。"));
   }
 }
 
@@ -1583,20 +1974,22 @@ function exportSettings() {
 function importSettings(text) {
   let data;
   try { data = JSON.parse(text); }
-  catch (e) { throw new Error("JSON として読めません（" + e.message + "）"); }
+  catch (e) { throw new Error(tr("JSON として読めません（{0}）", e.message)); }
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("いちばん外側が { } のかたちではありません");
+    throw new Error(tr("いちばん外側が { } のかたちではありません"));
   }
   const writes = [];
   for (const { name, key } of IO_KEYS) {
     const value = data[name];
     if (value === undefined) continue;
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error("`" + name + "` が { } のかたちではありません");
+      throw new Error(tr("`{0}` が { } のかたちではありません", name));
     }
     writes.push([key, JSON.stringify(withoutToken(name, value))]);
   }
-  if (!writes.length) throw new Error("取り込めるものがありません（" + IO_KEYS.map((k) => k.name).join(" / ") + "）");
+  if (!writes.length) {
+    throw new Error(tr("取り込めるものがありません（{0}）", IO_KEYS.map((k) => k.name).join(" / ")));
+  }
   for (const [key, json] of writes) localStorage.setItem(key, json);
 }
 
@@ -1742,24 +2135,24 @@ function evalSeconds(src) {
 
 /* 1800 → 「30分」。秒数だけだと長さが掴みにくいので添える */
 function niceDuration(sec) {
-  if (sec < 60) return sec + "秒";
+  if (sec < 60) return tr("{0}秒", sec);
   if (sec < 3600) {
     const m = Math.floor(sec / 60);
     const s = Math.round(sec - m * 60);
-    return m + "分" + (s ? s + "秒" : "");
+    return s ? tr("{0}分{1}秒", m, s) : tr("{0}分", m);
   }
   const h = Math.floor(sec / 3600);
   const m = Math.round((sec - h * 3600) / 60);
-  return h + "時間" + (m ? m + "分" : "");
+  return m ? tr("{0}時間{1}分", h, m) : tr("{0}時間", h);
 }
 
 function timeAgo(iso) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (s < 60) return "たった今";
-  if (s < 3600) return Math.floor(s / 60) + "分前";
-  if (s < 86400) return Math.floor(s / 3600) + "時間前";
+  if (s < 60) return tr("たった今");
+  if (s < 3600) return tr("{0}分前", Math.floor(s / 60));
+  if (s < 86400) return tr("{0}時間前", Math.floor(s / 3600));
   const d = Math.floor(s / 86400);
-  return d < 30 ? d + "日前" : Math.floor(d / 30) + "か月前";
+  return d < 30 ? tr("{0}日前", d) : tr("{0}か月前", Math.floor(d / 30));
 }
 /* 作成日は 08/19 の形。年は普段は要らないので、ホバーの中でだけ出す */
 const mmdd = (iso) => {
@@ -1777,11 +2170,21 @@ const fullStamp = (iso) => {
 
 const daysOld = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 
+/* 画面の上に出す帯。言葉を変えたときに出し直せるよう、訳す前のまま覚えておく。
+   body は HTML がそのまま入る（<code> やリンクが入ることがある）。訳の要らない
+   中身 —— 読めなかったリポジトリ名など —— は tr() を素通りする（キーが無ければ
+   そのまま返るので、通してよい） */
+let alertSay = null;
 function showAlert(title, body) {
-  $("alert").innerHTML = "<b>" + esc(title) + "</b>" + body;
+  alertSay = { title: title, body: body };
+  paintAlert();
+}
+function paintAlert() {
+  if (!alertSay) return;
+  $("alert").innerHTML = "<b>" + esc(tr(alertSay.title)) + "</b>" + tr(alertSay.body);
   $("alert").hidden = false;
 }
-const clearAlert = () => { $("alert").hidden = true; };
+const clearAlert = () => { alertSay = null; $("alert").hidden = true; };
 
 /* ---------- github ---------- */
 async function gh(path, token) {
@@ -2023,7 +2426,7 @@ function renderWidthGroup(box, which) {
   for (const w of WIDTHS) {
     box.append(toggleBtn({
       label: w.id,
-      title: w.hint,
+      title: tr(w.hint),
       on: (which === "one" ? widthOne : widthTwo) === w.id,
       toggle: () => {
         if (which === "one") widthOne = w.id; else widthTwo = w.id;
@@ -2069,7 +2472,7 @@ function snapDelay(value) {
 /* 遅延は CSS 変数で持つ。JS から触るのはこの1か所だけ */
 function applyMemoDelay() {
   document.documentElement.style.setProperty("--memo-delay", memoDelay + "s");
-  $("memodelayout").textContent = memoDelay === 0 ? "すぐ" : memoDelay.toFixed(1) + " 秒";
+  $("memodelayout").textContent = memoDelay === 0 ? tr("すぐ") : tr("{0} 秒", memoDelay.toFixed(1));
 }
 
 /* 手で書き換えられていることもあるので、配列でなければ空、文字列以外は捨てる */
@@ -2158,7 +2561,7 @@ function paintRepos(box, repos) {
 
 function renderScope() {
   const box = $("scope");
-  if (!shownRepos.length) box.textContent = "リポジトリ未設定";
+  if (!shownRepos.length) box.textContent = tr("リポジトリ未設定");
   else paintRepos(box, shownRepos);
   fitTop();   // 並ぶものが変われば、1行に入るかどうかも変わる
 }
@@ -2173,6 +2576,29 @@ function rowWidth(box, gap) {
 
 /* 見出しが1行に収まるか測って、収まらなければ repo を下の行へ落とす。
    .spacer は幅を持たない（余りを吸うだけ）ので、数から外して gap だけ数える */
+/* 右上の一言。言葉を変えたときに出し直せるよう、「何を出すか」だけ覚えておいて、
+   文字にするのはいつもここでやる。後ろに付く「自動更新 停止中」「残 N」は
+   更新できたときにしか付かないので、付けるかどうかも一緒に覚える */
+let statusMsg = ["読み込み中…"];
+let statusTail = false;
+function setStatus(ja) {
+  statusMsg = Array.prototype.slice.call(arguments);
+  statusTail = false;
+  paintStatus();
+}
+function setStatusAt(hh) {
+  statusMsg = ["更新 <b>{0}</b>", hh];
+  statusTail = true;
+  paintStatus();
+}
+function paintStatus() {
+  const tail = !statusTail ? "" :
+    (autoPaused() ? " · " + tr("自動更新 停止中") : "") +
+    (gh.remaining ? " · " + tr("残 {0}", gh.remaining) : "");
+  $("status").innerHTML = tr.apply(null, statusMsg) + tail;
+  fitTop();   // 「残 4998」が付くだけでも1行に入らなくなることがある
+}
+
 function fitTop() {
   const top = document.querySelector(".top");
   const group = top.querySelector(".fgroup");
@@ -2271,7 +2697,7 @@ function renderBoard() {
   if (selOn && !selLanes().length) dropSelect();
 
   const allHidden = shownRepos.length > 0 && hiddenRepos.size === shownRepos.length;
-  LANES.forEach((l) => renderLane(l, buckets[l.id], allHidden ? "リポジトリをすべて非表示にしています。" : undefined));
+  LANES.forEach((l) => renderLane(l, buckets[l.id], allHidden ? tr("リポジトリをすべて非表示にしています。") : undefined));
 
   // 依頼は「来ていれば見る」レーン。1件でもあれば列の先頭に上げ、
   // 0件なら最後に落とす。並びは grid の order でやる —— DOM の位置を
@@ -2296,11 +2722,11 @@ async function refresh() {
     // 開いた状態で始めるのではなく、一拍おいてから開き始める。
     // 引き出しが出てくるところが見えれば、これが ☰ の中身だと分かる
     if (!autoOpened) { autoOpened = true; setTimeout(() => setSettings(true), 200); }
-    LANES.forEach((l) => renderLane(l, null, "トークンを入れると表示されます"));
+    LANES.forEach((l) => renderLane(l, null, tr("トークンを入れると表示されます")));
     return;
   }
 
-  $("status").textContent = "読み込み中…";
+  setStatus(tr("読み込み中…"));
 
   // /user は「自分が誰か」を覚えるためだけのもので、PR の取得を待たせる理由がない。
   // 2回目以降は cfg.me が保存済みなので、待つとまるまる1往復ぶん損する。
@@ -2313,7 +2739,7 @@ async function refresh() {
   const [results, counts] = await Promise.all([
     Promise.all(repos.map(async (r) => {
       try { return await gh("/repos/" + r + "/pulls?state=open&per_page=100&sort=updated&direction=desc"); }
-      catch (e) { failed.push(r + (e.status === 404 ? "（見つからない／権限なし）" : "（" + e.message + "）")); return []; }
+      catch (e) { failed.push(r + (e.status === 404 ? tr("（見つからない／権限なし）") : "（" + e.message + "）")); return []; }
     })),
     // 数が出ないだけで盤面は成り立つ。GraphQL が落ちても空で続ける
     fetchCounts(repos).catch(() => new Map())
@@ -2323,7 +2749,7 @@ async function refresh() {
   if (meRaw instanceof Error) {
     // リポジトリ側も同じ理由で失敗しているはずなので、原因が分かるこちらを出す
     setTokenTrouble(true);
-    $("status").textContent = "停止中";
+    setStatus(tr("停止中"));
     showAlert(meRaw.status === 401 ? "トークンが無効です" : "GitHubに接続できませんでした",
       meRaw.status === 401
         ? "設定から入れ直してください。期限切れか、スコープに <code>repo</code> が入っていない可能性があります。"
@@ -2359,12 +2785,8 @@ async function refresh() {
   if (failed.length) showAlert("読めなかったリポジトリがあります", esc(failed.join(" / ")));
   else clearAlert();
 
-  const t = new Date();
-  const hh = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
-  $("status").innerHTML = "更新 <b>" + hh + "</b>" +
-    (autoPaused() ? " · 自動更新 停止中" : "") +
-    (gh.remaining ? " · 残 " + gh.remaining : "");
-  fitTop();   // 「残 4998」が付くだけでも1行に入らなくなることがある
+  const now = new Date();
+  setStatusAt(String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0"));
 }
 
 /* ---------- render ---------- */
@@ -2454,10 +2876,11 @@ function dropSelect() {
 
 /* 通常のコピーボタン。押すと選択モードに入る */
 function copyActsHtml(lane) {
-  return '<button class="copy" type="button" data-kind="list" aria-label="この一覧から選んでコピー" title="この一覧から選んでコピー">' + ICON_COPY + "</button>" +
-    (lane.post
-      ? '<button class="copy" type="button" data-kind="post" aria-label="レビュー依頼の文面ごと、選んでコピー" title="レビュー依頼の文面ごと、選んでコピー">' + ICON_DOC + "</button>"
-      : "");
+  const one = (kind, say, icon) =>
+    '<button class="copy" type="button" data-kind="' + kind + '"' +
+      ' aria-label="' + esc(say) + '" title="' + esc(say) + '">' + icon + "</button>";
+  return one("list", tr("この一覧から選んでコピー"), ICON_COPY) +
+    (lane.post ? one("post", tr("レビュー依頼の文面ごと、選んでコピー"), ICON_DOC) : "");
 }
 
 /* 選択中の見出し。全選択/全解除・確定・やめる の3つ。
@@ -2466,12 +2889,14 @@ function copyActsHtml(lane) {
 function selActsHtml() {
   const n = selPrs().length;
   const all = n > 0;
-  return '<label class="pickall" title="' + (all ? "選択をすべて外す" : "出ている分をすべて選ぶ") + '">' +
+  return '<label class="pickall" title="' + (all ? tr("選択をすべて外す") : tr("出ている分をすべて選ぶ")) + '">' +
       '<input type="checkbox" class="allbox"' + (all ? " checked" : "") + ">" +
-      "<span>" + (all ? "全解除" : "全選択") + "</span>" +
+      "<span>" + (all ? tr("全解除") : tr("全選択")) + "</span>" +
     "</label>" +
-    '<button class="docopy" type="button"' + (n ? "" : " disabled") + '>コピー ' + n + "件</button>" +
-    '<button class="xbtn" type="button" aria-label="選ぶのをやめる" title="やめる">' + ICON_FAIL + "</button>";
+    '<button class="docopy" type="button"' + (n ? "" : " disabled") + ">" +
+      esc(tr("コピー {0}件", n)) + "</button>" +
+    '<button class="xbtn" type="button" aria-label="' + esc(tr("選ぶのをやめる")) + '"' +
+      ' title="' + esc(tr("やめる")) + '">' + ICON_FAIL + "</button>";
 }
 
 /* 見出しの数とトグルの字だけ塗り替える。行は触らない ——
@@ -2485,14 +2910,14 @@ function paintSelHeads() {
     const el = $("lane-" + lane.id);
     const btn = el.querySelector(".docopy");
     if (!btn) continue;   // このレーンは選択モードの見出しを出していない
-    btn.textContent = "コピー " + n + "件";
+    btn.textContent = tr("コピー {0}件", n);
     btn.disabled = n === 0;
     const box = el.querySelector(".allbox");
     if (box) box.checked = n > 0;
     const lbl = el.querySelector(".pickall");
     if (lbl) {
-      lbl.querySelector("span").textContent = n > 0 ? "全解除" : "全選択";
-      lbl.title = n > 0 ? "選択をすべて外す" : "出ている分をすべて選ぶ";
+      lbl.querySelector("span").textContent = n > 0 ? tr("全解除") : tr("全選択");
+      lbl.title = n > 0 ? tr("選択をすべて外す") : tr("出ている分をすべて選ぶ");
     }
   }
 }
@@ -2507,17 +2932,18 @@ function renderLane(lane, prs, emptyMsg) {
 
   const rows = prs && prs.length
     ? prs.map((pr, i) => prRow(pr, i, sel)).join("")
-    : '<p class="empty">' + esc(emptyMsg || "いまは空です。") + "</p>";
+    : '<p class="empty">' + esc(emptyMsg || tr("いまは空です。")) + "</p>";
   const more = (lane.paged && prs)
     ? '<button class="more" type="button"' + (closedLoading || closedEnd ? " disabled" : "") + ">" +
-        (closedLoading ? "読み込み中…" : closedEnd ? "これ以上ありません" : "もっと見る") + "</button>"
+        (closedLoading ? tr("読み込み中…") : closedEnd ? tr("これ以上ありません") : tr("もっと見る")) + "</button>"
     : "";
   const el = $("lane-" + lane.id);
 
   el.innerHTML =
     '<div class="rail"><span class="n">' + (prs ? n : "–") + "</span>" +
       // 英字か日本語かで縦書きの向きが変わる。判定はここ1か所で持つ
-      '<span class="lbl' + (/^[!-~]+$/.test(lane.rail) ? " en" : "") + '">' + lane.rail + "</span></div>" +
+      '<span class="lbl' + (/^[!-~]+$/.test(tr(lane.rail)) ? " en" : "") + '">' +
+        esc(tr(lane.rail)) + "</span></div>" +
     '<div class="lane-body">' +
       '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
         (lane.sub ? '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" : "") +
@@ -2596,7 +3022,7 @@ function renderLane(lane, prs, emptyMsg) {
       const body = listText(picked);
       // 合図を出し切ってから閉じる。すぐ閉じると renderBoard でボタンごと
       // 作り直され、「コピーしました」が出ないまま盤面が動く
-      copyText(doBtn, "コピー " + picked.length + "件",
+      copyText(doBtn, tr("コピー {0}件", picked.length),
         selKind === "post" ? REVIEW_TEMPLATE + "\n\n" + body : body,
         closeSelect);
     };
@@ -2652,8 +3078,9 @@ function copyText(btn, icon, text, onDone) {
    出したばかりの PR に見えてしまい、黙って嘘をつくことになる */
 function whenHtml(pr) {
   const born = pr.created_at;
-  return '<span class="when tip" data-tip="作成 ' + (born ? fullStamp(born) : "不明") +
-    "&#10;更新 " + fullStamp(pr.updated_at) + '">' +
+  return '<span class="when tip" data-tip="' +
+    esc(tr("作成 {0}", born ? fullStamp(born) : tr("不明"))) + "&#10;" +
+    esc(tr("更新 {0}", fullStamp(pr.updated_at))) + '">' +
     (born ? mmdd(born) : "--/--") + " - " + timeAgo(pr.updated_at) +
     "</span>";
 }
@@ -2677,9 +3104,10 @@ function countsHtml(pr) {
   return '<span class="sep">|</span>' +
     '<button class="cnt' + (changed ? " new" : "") + '" type="button"' +
       ' data-key="' + esc(prKey(pr)) + '" data-now="' + now.join(",") + '"' +
-      ' title="' + (changed
-        ? "前に見たとき comment: " + was[0] + " review: " + was[1] + " inline: " + was[2] + " — 押すといまの数を覚える"
-        : "押すといまの数を覚える") + '">' +
+      ' title="' + esc(changed
+        ? tr("前に見たとき comment: {0} review: {1} inline: {2} — 押すといまの数を覚える",
+             was[0], was[1], was[2])
+        : tr("押すといまの数を覚える")) + '">' +
       one("comment", c.comments, was[0]) +
       one("review", c.reviews, was[1]) +
       one("inline", c.inline, was[2]) +
@@ -2708,7 +3136,7 @@ function branchHtml(pr) {
   if (!head && !base) return "";
   const btn = (ref) =>
     '<button class="branch" type="button" data-branch="' + esc(ref) + '"' +
-    ' title="ブランチ名をコピー">' + esc(ref) + "</button>";
+    ' title="' + esc(tr("ブランチ名をコピー")) + '">' + esc(ref) + "</button>";
   return '<span class="branches">' +
     (head ? btn(head) : "") +
     (base && head ? '<span class="bw">→</span>' : "") +
@@ -2742,8 +3170,10 @@ function prCard(pr) {
       : '<span class="chip shut">closed</span>');
   } else {
     if (draftOf(pr)) chips.push('<span class="chip draft">draft</span>');
-    if (age >= 14) chips.push('<span class="chip rot">' + age + "日 停滞</span>");
-    else if (age >= 7) chips.push('<span class="chip stale">' + age + "日 停滞</span>");
+    if (age >= 7) {
+      chips.push('<span class="chip ' + (age >= 14 ? "rot" : "stale") + '">' +
+        esc(tr("{0}日 停滞", age)) + "</span>");
+    }
   }
   (pr.labels || []).slice(0, 2).forEach((l) => {
     chips.push('<span class="chip label">' + esc(l.name) + "</span>");
@@ -2777,22 +3207,24 @@ function prRow(pr, i, sel) {
     '<div class="pr-actions">' +
       '<button class="memo-tag tip' + (memo ? " has" : "") + '" type="button" data-i="' + i + '"' +
         // 中身をそのままホバーに出す。開かずに読めるほうが速い。改行も残す
-        ' data-tip="' + esc(memo || "メモを書く") + '"' +
-        ' aria-label="メモ">' +
+        ' data-tip="' + esc(memo || tr("メモを書く")) + '"' +
+        ' aria-label="' + esc(tr("メモ")) + '">' +
         ICON_MEMO +
       "</button>" +
-      '<label class="wait-tag" title="待ちの印を付ける">' +
+      '<label class="wait-tag" title="' + esc(tr("待ちの印を付ける")) + '">' +
         '<input type="checkbox" data-i="' + i + '"' + (isWaiting(pr) ? " checked" : "") + ">" +
-        "<span>待ち</span>" +
+        "<span>" + esc(tr("待ち")) + "</span>" +
       "</label>" +
       '<button class="scope-tag" type="button" data-i="' + i + '"' +
         ' aria-pressed="' + String(!inScope) + '"' +
-        ' aria-label="' + (inScope ? "この PR を伏せる" : "伏せているのを戻す") + '"' +
-        ' title="' + (inScope ? LABELS.IN + " — 押すと伏せる" : LABELS.OUT + " — 押すと戻す") + '">' +
+        ' aria-label="' + esc(inScope ? tr("この PR を伏せる") : tr("伏せているのを戻す")) + '"' +
+        ' title="' + esc(inScope ? tr("{0} — 押すと伏せる", LABELS.IN)
+                                 : tr("{0} — 押すと戻す", LABELS.OUT)) + '">' +
         (inScope ? ICON_EYE : ICON_EYE_OFF) +
       "</button>" +
       '<button class="ops-tag" type="button" data-i="' + i + '"' +
-        ' aria-label="この PR の操作" title="draft の出し入れ / update branch / この1件をコピー">' +
+        ' aria-label="' + esc(tr("この PR の操作")) + '"' +
+        ' title="' + esc(tr("draft の出し入れ / update branch / この1件をコピー")) + '">' +
         ICON_GEAR +
       "</button>" +
     "</div>" +
@@ -2833,14 +3265,14 @@ function paintPeople(box, isDrawer) {
   if (!cfg.me && isDrawer) {
     const p = document.createElement("p");
     p.className = "none";
-    p.textContent = "自分は、トークンを保存すると一覧に出ます。";
+    p.textContent = tr("自分は、トークンを保存すると一覧に出ます。");
     box.append(p);
   }
 
   for (const person of peopleList()) box.append(personToggle(person));
 
   // 追う人を足すのは基本設定の Author 欄。盤面の上の帯には出さない
-  if (isDrawer) box.append(jumpBtn("＋ 追加する", "sec-mates", "mates"));
+  if (isDrawer) box.append(jumpBtn(tr("＋ 追加する"), "sec-mates", "mates"));
 }
 
 /* 設定の中と盤面の上で同じもの。押せる範囲が名前の幅ぶんある方がいいので、
@@ -2856,7 +3288,7 @@ function personToggle(person) {
   if (person.self) {
     const tag = document.createElement("span");
     tag.className = "self";
-    tag.textContent = "自分";
+    tag.textContent = tr("自分");
     b.append(tag);
   }
   return b;
@@ -2880,12 +3312,12 @@ function renderRepoFilter() {
     box.textContent = "";
     const p = document.createElement("p");
     p.className = "none";
-    p.textContent = "リポジトリを入れると、ここに並びます。";
+    p.textContent = tr("リポジトリを入れると、ここに並びます。");
     box.append(p);
   } else {
     paintRepos(box, repos);
   }
-  box.append(jumpBtn("＋ 追加する", "sec-repos", "repos"));
+  box.append(jumpBtn(tr("＋ 追加する"), "sec-repos", "repos"));
 }
 
 /* 盤面に出すレーン。押した時点で view に書く */
@@ -2899,7 +3331,7 @@ function renderLaneFilter() {
   $("lanegroup").hidden = lanes.length < 2;
   for (const lane of lanes) {
     box.append(toggleBtn({
-      label: lane.rail,
+      label: tr(lane.rail),
       kind: "lane-tag",
       title: lane.title,
       on: !laneOff.has(lane.id),
@@ -3062,9 +3494,9 @@ function openMemo(pr) {
   // 見出しはそのPRのカードそのもの。待ちはメモを書きながら決めることが多いので、
   // カードのフッターの下に同じチェックを出しておく
   $("memohead").innerHTML = prCard(pr) +
-    '<label class="wait-tag" title="待ちの印を付ける">' +
+    '<label class="wait-tag" title="' + esc(tr("待ちの印を付ける")) + '">' +
       '<input type="checkbox"' + (isWaiting(pr) ? " checked" : "") + ">" +
-      "<span>待ち</span>" +
+      "<span>" + esc(tr("待ち")) + "</span>" +
     "</label>";
   wireBranchCopy($("memohead"));
   wireCounts($("memohead"));
@@ -3182,8 +3614,8 @@ function wireOpsCopy(pr) {
   const line = head.querySelector(".pr .branches") || head.querySelector(".pr .m");
   if (!line) return;
   line.insertAdjacentHTML("beforeend",
-    '<button class="ops-copy" type="button" title="この1件を、一覧と同じ書式でコピー"' +
-    ' aria-label="この PR 1件をコピー">' + ICON_COPY + "</button>");
+    '<button class="ops-copy" type="button" title="' + esc(tr("この1件を、一覧と同じ書式でコピー")) + '"' +
+    ' aria-label="' + esc(tr("この PR 1件をコピー")) + '">' + ICON_COPY + "</button>");
   const btn = line.lastElementChild;
   // 合図のあとに戻す絵はアイコンそのもの（字のボタンではないので）
   btn.onclick = () => copyText(btn, ICON_COPY, listText([pr]));
@@ -3210,9 +3642,9 @@ let opsJobs = [];
 
 function opsJobText(job) {
   const head = job.name + " " + job.label + " ";
-  if (job.state === "run") return head + "処理中…";
-  if (job.state === "ng") return head + "エラー: " + job.detail;
-  return head + "処理完了";
+  if (job.state === "run") return head + tr("処理中…");
+  if (job.state === "ng") return head + tr("エラー: {0}", job.detail);
+  return head + tr("処理完了");
 }
 
 function paintOpsLog() {
@@ -3299,12 +3731,12 @@ async function loadOps(pr, keepMsg) {
     if (e.status === 404) {
       // PR そのものが無い。行が知っていたことも当てにならないので、全部落とす
       opsState = null;
-      opsMsg = '<span class="ng">この PR が見つかりません。消されたか、権限が変わっています。</span>';
+      opsMsg = '<span class="ng">' + esc(tr("この PR が見つかりません。消されたか、権限が変わっています。")) + "</span>";
     } else {
       // 読めなかったのは「行が知らない分」だけ。draft かどうかは欄で分かっていて
       // 調べものの成否とは関係ないので、トグルは押せるまま残す
       opsState = { ...opsState, loading: false, behind: null, mergeable: null, more: null };
-      opsMsg = '<span class="ng">base からの遅れを読めませんでした（' + esc(e.message) + "）。</span>";
+      opsMsg = '<span class="ng">' + esc(tr("base からの遅れを読めませんでした（{0}）。", e.message)) + "</span>";
     }
     paintOps();
   }
@@ -3347,8 +3779,8 @@ function opsFacts() {
   if (!s) return "";
   const m = s.more;
   const num = (n) => typeof n === "number" ? String(n) : null;
-  const yet = '<span class="yet">読み中…</span>';
-  const lost = '<span class="yet">読めませんでした</span>';
+  const yet = '<span class="yet">' + esc(tr("読み中…")) + "</span>";
+  const lost = '<span class="yet">' + esc(tr("読めませんでした")) + "</span>";
   const none = (t) => '<span class="non">' + t + "</span>";
   // 値は関数で渡す。読めていないときに中身を組み立てると、無い値に触って落ちる
   const row = (dt, val, title) =>
@@ -3360,42 +3792,43 @@ function opsFacts() {
   return [
     // コンフリクトを頭に置く。update branch が灰色のときに、なぜ押せないかを
     // 最初に読む場所がここになる
-    row("コンフリクト", () => s.dirty
-      ? chip("conflict", "あり") + "base を取り込んでも解けません。手元で直して push が要ります"
-      : s.mergeable === true ? chip("clean", "なし")
+    row(tr("コンフリクト"), () => s.dirty
+      ? chip("conflict", tr("あり")) + esc(tr("base を取り込んでも解けません。手元で直して push が要ります"))
+      : s.mergeable === true ? chip("clean", tr("なし"))
       // 粘って取り直しても null だった。無いことにはしない
-      : chip("pending", "判定中") + "GitHub がまだ判定していません",
-      "ここが「あり」のあいだ update branch は押せない。base を入れても解けないため"),
-    row("遅れ", () => s.behind === null ? null
-      : s.behind > 0 ? "base（" + esc(s.base) + "）より " + s.behind + " コミット遅れ"
-      : "base に追いついている",
-      "base の側に、この PR が持っていないコミットが何個あるか"),
-    row("状態", () => m.mstate
+      : chip("pending", tr("判定中")) + esc(tr("GitHub がまだ判定していません")),
+      tr("ここが「あり」のあいだ update branch は押せない。base を入れても解けないため")),
+    row(tr("遅れ"), () => s.behind === null ? null
+      : s.behind > 0 ? esc(tr("base（{0}）より {1} コミット遅れ", s.base, s.behind))
+      : tr("base に追いついている"),
+      tr("base の側に、この PR が持っていないコミットが何個あるか")),
+    row(tr("状態"), () => m.mstate
       ? '<span class="word">' + esc(m.mstate) + "</span> — " +
-        (MSTATE_WORDS[m.mstate] || "GitHub が返した値をそのまま出している")
+        (MSTATE_WORDS[m.mstate] ? tr(MSTATE_WORDS[m.mstate])
+          : tr("GitHub が返した値をそのまま出している"))
       : null,
-      "GitHub の mergeable_state。merge を止めているものが何かを1語で言う"),
-    row("差分", () => num(m.additions) === null ? null
+      tr("GitHub の mergeable_state。merge を止めているものが何かを1語で言う")),
+    row(tr("差分"), () => num(m.additions) === null ? null
       : '<span class="plus">+' + m.additions + '</span> ' +
         '<span class="minus">−' + m.deletions + "</span>" +
-        (num(m.changed) === null ? "" : " · " + m.changed + " ファイル"),
-      "足した行 / 消した行 / 触ったファイル数。レビューを頼む順を決める材料"),
-    row("コミット", () => num(m.commits) === null ? null
-      : m.commits + " コミット" +
-        (m.ahead === null ? "" : " · base より " + m.ahead + " 進み"),
-      "この PR が積んでいるコミット数と、base から見て進んでいる数"),
+        (num(m.changed) === null ? "" : " · " + esc(tr("{0} ファイル", m.changed))),
+      tr("足した行 / 消した行 / 触ったファイル数。レビューを頼む順を決める材料")),
+    row(tr("コミット"), () => num(m.commits) === null ? null
+      : esc(tr("{0} コミット", m.commits)) +
+        (m.ahead === null ? "" : " · " + esc(tr("base より {0} 進み", m.ahead))),
+      tr("この PR が積んでいるコミット数と、base から見て進んでいる数")),
     row("auto-merge", () => m.auto
-      ? "有効（" + esc(m.auto.merge_method || "?") +
-        (m.auto.enabled_by ? " / @" + esc(m.auto.enabled_by.login) : "") + "）"
-      : none("なし"),
-      "有効なら、条件が揃った時点で GitHub が勝手に merge する。督促は要らない"),
-    row("レビュー依頼", () => m.reviewers.length
+      ? esc(tr("有効（{0}）", (m.auto.merge_method || "?") +
+          (m.auto.enabled_by ? " / @" + m.auto.enabled_by.login : "")))
+      : none(tr("なし")),
+      tr("有効なら、条件が揃った時点で GitHub が勝手に merge する。督促は要らない")),
+    row(tr("レビュー依頼"), () => m.reviewers.length
       ? m.reviewers.map((r) => "@" + esc(r)).join(" ")
-      : none("なし"),
-      "まだ返していない依頼先。返した人はここから消える"),
-    row("rebase", () => m.rebaseable === true ? "できる"
-      : m.rebaseable === false ? none("できない") : none("不明"),
-      "update branch（merge commit）が使えないときに、rebase なら入るか")
+      : none(tr("なし")),
+      tr("まだ返していない依頼先。返した人はここから消える")),
+    row("rebase", () => m.rebaseable === true ? tr("できる")
+      : m.rebaseable === false ? none(tr("できない")) : none(tr("不明")),
+      tr("update branch（merge commit）が使えないときに、rebase なら入るか"))
   ].join("");
 }
 
@@ -3419,16 +3852,16 @@ function baseHead(d) {
    「draft を解除」と書いてあること自体が「いまは draft」を意味する */
 function opsTitle(act) {
   const s = opsState;
-  if (!s) return "状態を読めていない";
-  if (!s.open) return s.merged ? "merge 済みの PR" : "閉じた PR";
-  if (act === "draft") return "押すと draft に戻す。レビューの依頼からは外れる";
-  if (act === "ready") return "押すと draft を解除して、レビューに出す";
+  if (!s) return tr("状態を読めていない");
+  if (!s.open) return s.merged ? tr("merge 済みの PR") : tr("閉じた PR");
+  if (act === "draft") return tr("押すと draft に戻す。レビューの依頼からは外れる");
+  if (act === "ready") return tr("押すと draft を解除して、レビューに出す");
   // ここから下は update branch のぶん。なぜ灰色なのかを必ず言う
-  if (s.loading) return "コンフリクトの有無と、base からの遅れを、いま調べている";
-  if (s.dirty) return "コンフリクトがある。update branch は base を取り込む操作なので、これでは解けない";
-  if (s.behind === null) return "base より遅れているかを読めなかった";
-  if (s.behind > 0) return "base（" + s.base + "）より " + s.behind + " コミット遅れ";
-  return "base に追いついている";
+  if (s.loading) return tr("コンフリクトの有無と、base からの遅れを、いま調べている");
+  if (s.dirty) return tr("コンフリクトがある。update branch は base を取り込む操作なので、これでは解けない");
+  if (s.behind === null) return tr("base より遅れているかを読めなかった");
+  if (s.behind > 0) return tr("base（{0}）より {1} コミット遅れ", s.base, s.behind);
+  return tr("base に追いついている");
 }
 
 /* 下の行は、押したあとの進捗と結果だけを出す。何もしていないときは空 */
@@ -3459,7 +3892,7 @@ function paintOps() {
     '<dt class="act">' + dt + '</dt><dd class="act">' + html + "</dd>";
 
   $("opslist").innerHTML =
-    act("draft", btn(dir, dir === "ready" ? "draft を解除" : "draft に戻す", !!live, drSpin)) +
+    act("draft", btn(dir, dir === "ready" ? tr("draft を解除") : tr("draft に戻す"), !!live, drSpin)) +
     act("update", btn("update", "update branch", !!(live && !s.dirty && behind), upSpin)) +
     // 状態そのものが読めていない（PR が消えている）ときは、読む側は並べない
     (opsState ? '<div class="cut"></div>' + opsFacts() : "");
@@ -3505,9 +3938,9 @@ async function runOps(btn, act) {
   if (!s) return;
   // ボタンが動詞そのものになったので、押された act がそのまま向き
   const dir = act;
-  const word = OPS_WORDS[dir];
+  const word = OPS_WORDS[dir];   // 訳すのは出すところで
   const full = pr.base.repo.full_name;
-  const job = opsJobStart(pr, OPS_LABEL[dir]);
+  const job = opsJobStart(pr, tr(OPS_LABEL[dir]));
   // 途中で閉じられた / 別の PR を開かれたら、modal 側は塗らない
   const onScreen = () => opsOpen() && opsFor === pr;
 
@@ -3515,7 +3948,7 @@ async function runOps(btn, act) {
   // 走っていることを覚えてから塗り直す。押せなくするのと、そのボタンの中で
   // クルクルを回すのは、どちらも paintOps がこれを見て決める
   opsRun = { pr: pr, act: dir };
-  opsMsg = word.doing;
+  opsMsg = tr(word.doing);
   paintOps();
 
   try {
@@ -3529,7 +3962,7 @@ async function runOps(btn, act) {
       // 持っていないことがあるので、そのときだけ裏の調べものに追いつく
       let id = s.id;
       if (!id && opsLoad) { await opsLoad; id = opsState ? opsState.id : ""; }
-      if (!id) throw new Error("この PR の id を読めませんでした");
+      if (!id) throw new Error(tr("この PR の id を読めませんでした"));
       await ghMutate(dir === "ready" ? Q_TO_READY : Q_TO_DRAFT, { id: id });
     }
     opsJobEnd(job, true);
@@ -3543,14 +3976,14 @@ async function runOps(btn, act) {
       settleDraft(pr);
     }
     if (!onScreen()) return;
-    opsMsg = '<span class="yes">' + word.done + "</span>";
+    opsMsg = '<span class="yes">' + esc(tr(word.done)) + "</span>";
     // 押せるものが変わる。取り直して塗り直す（結果の一言は残す）
     opsLoad = loadOps(pr, true);
     await opsLoad;
   } catch (e) {
     opsJobEnd(job, false, e.message);
     if (!onScreen()) return;
-    opsMsg = '<span class="ng">' + word.ng + " — " + esc(e.message) + "</span>";
+    opsMsg = '<span class="ng">' + esc(tr(word.ng) + " — " + e.message) + "</span>";
     paintOps();
   } finally {
     // 自分のぶんだけ下ろす。閉じて別の PR で走らせていたら、それはそちらのもの
@@ -3562,12 +3995,62 @@ async function runOps(btn, act) {
   }
 }
 
+/* 言葉の切り替え。出ている字が、いまの言葉 */
+function paintLang() {
+  const b = $("lang");
+  b.textContent = lang === "en" ? "EN" : "JA";
+  b.title = lang === "en" ? tr("日本語に切り替える") : "Switch to English";
+  b.setAttribute("aria-label", b.title);
+}
+
+/* 言葉を変えたら、描いてあるものを全部描き直す。読み込み直しはしない ——
+   GitHub から取ったものは言葉と関係が無く、取り直すと待ち時間だけが増える */
+function setLang(v) {
+  if (v === lang) return;
+  lang = v;
+  try { localStorage.setItem(LANG_KEY, v); } catch (e) { /* 覚えられなくても、この画面では効く */ }
+  document.documentElement.lang = v;
+  applyStatic();
+  paintLang();
+  paintBlind();
+  paintWaitFilter();
+  paintClosedFilters();
+  paintTabs();
+  paintSaveState();
+  renderLaneFilter();
+  // fillForm は呼ばない —— あれは cfg から入力欄を埋め直すもので、
+  // 保存前に打ってある途中のリポジトリ名や式が、言葉を変えただけで消える。
+  // 言葉で変わるのは「出している文字」のほうだけなので、そちらだけ描き直す
+  showInterval();
+  showQuiet();
+  renderDays();
+  showDays();
+  applyMemoDelay();
+  renderWidths();
+  renderPeople();
+  renderRepoFilter();
+  paintSaveState();
+  if (fetched || fetchedClosed) renderBoard();
+  else LANES.forEach((l) => renderLane(l, null, tr("読み込み中…")));
+  paintStatus();
+  paintAlert();
+  paintOpsLog();
+  // 開いている最中なら、その場で入れ替える（閉じて開き直させない）
+  if (opsOpen() && opsFor) {
+    $("opshead").innerHTML = prCard(opsFor);
+    wireBranchCopy($("opshead"));
+    wireCounts($("opshead"));
+    wireOpsCopy(opsFor);
+    paintOps();
+  }
+}
+
 /* ヘッダーの目。伏せた PR を盤面に残すかどうかだけを切り替える */
 function paintBlind() {
   const b = $("blind");
   b.innerHTML = showOut ? ICON_EYE : ICON_EYE_OFF;
   b.setAttribute("aria-pressed", String(showOut));
-  b.title = showOut ? "伏せたPRも出している — 押すと隠す" : "伏せたPRを隠している — 押すと出す";
+  b.title = showOut ? tr("伏せたPRも出している — 押すと隠す") : tr("伏せたPRを隠している — 押すと出す");
   b.setAttribute("aria-label", b.title);
 }
 
@@ -3592,11 +4075,11 @@ function paintClosedFilters() {
   const set = (id, on, name) => {
     const b = $(id);
     b.setAttribute("aria-pressed", String(on));
-    b.title = on ? name + "も出している — 押すと隠す" : name + "を隠している — 押すと出す";
+    b.title = on ? tr("{0}も出している — 押すと隠す", name) : tr("{0}を隠している — 押すと出す", name);
     b.setAttribute("aria-label", b.title);
   };
-  set("closedfilter", showUnmerged, "merge せずに閉じた PR ");
-  set("mergedfilter", showMerged, "merge した PR ");
+  set("closedfilter", showUnmerged, tr("merge せずに閉じた PR "));
+  set("mergedfilter", showMerged, tr("merge した PR "));
 }
 
 $("closedfilter").onclick = () => {
@@ -3627,11 +4110,12 @@ $("tab-closed").onclick = () => setTab("closed");
 function paintWaitFilter() {
   const b = $("waitfilter");
   b.setAttribute("aria-pressed", String(showWaiting));
-  b.title = showWaiting ? "「待ち」も出している — 押すと隠す" : "「待ち」を隠している — 押すと出す";
+  b.title = showWaiting ? tr("「待ち」も出している — 押すと隠す") : tr("「待ち」を隠している — 押すと出す");
   b.setAttribute("aria-label", b.title);
 }
 
 $("blind").onclick = () => { showOut = !showOut; saveView(); paintBlind(); renderBoard(); };
+$("lang").onclick = () => setLang(lang === "ja" ? "en" : "ja");
 $("waitfilter").onclick = () => {
   showWaiting = !showWaiting;
   saveView();
@@ -3745,7 +4229,7 @@ function renderDays() {
   box.textContent = "";
   for (let d = 0; d < 7; d++) {
     box.append(toggleBtn({
-      label: DAY_NAMES[d],
+      label: tr(DAY_NAMES[d]),
       kind: "repo",               // 曜日もリポジトリと同じ形（角ばった箱に取り消し線）
       data: { day: d },           // 週末の下地は CSS 側でこれを見る
       on: daysOn.has(d),
@@ -3765,12 +4249,13 @@ function showDays() {
   const el = $("dayout");
   el.classList.remove("warn");
   if (!daysOn.size) {
-    el.textContent = "1つも選ばれていません。このままだと自動更新しません";
+    el.textContent = tr("1つも選ばれていません。このままだと自動更新しません");
     el.classList.add("warn");
     return;
   }
-  if (daysOn.size === 7) { el.textContent = "毎日"; return; }
-  el.textContent = [...daysOn].sort((a, b) => a - b).map((d) => DAY_NAMES[d]).join("・") + " に動く";
+  if (daysOn.size === 7) { el.textContent = tr("毎日"); return; }
+  el.textContent = tr("{0} に動く",
+    [...daysOn].sort((a, b) => a - b).map((d) => tr(DAY_NAMES[d])).join(tr("・")));
 }
 
 /* 打つ欄ではないのでデバウンスは掛けない。決めた時点で書く */
@@ -3784,19 +4269,19 @@ function showQuiet() {
   const el = $("quietout");
   const from = $("quietfrom").value, to = $("quietto").value;
   el.classList.remove("warn");
-  if (!from && !to) { el.textContent = "止めない"; return; }
+  if (!from && !to) { el.textContent = tr("止めない"); return; }
   if (!from || !to) {
-    el.textContent = "開始と終了の両方を入れてください（片方だけでは止まりません）";
+    el.textContent = tr("開始と終了の両方を入れてください（片方だけでは止まりません）");
     el.classList.add("warn");
     return;
   }
   if (from === to) {
-    el.textContent = "開始と終了が同じです（止まりません）";
+    el.textContent = tr("開始と終了が同じです（止まりません）");
     el.classList.add("warn");
     return;
   }
   const wraps = parseHM(from) > parseHM(to);
-  el.textContent = from + " 〜 " + to + (wraps ? "（翌日）" : "") + " は自動更新しない";
+  el.textContent = tr("{0} 〜 {1}{2} は自動更新しない", from, to, wraps ? tr("（翌日）") : "");
 }
 
 /* 保存ボタンは通さない。動かした時点で効いて、そのまま覚える */
@@ -3820,8 +4305,8 @@ function intervalBlocker() {
   const raw = $("interval").value.trim();
   if (!raw || raw === "0") return null;
   const sec = evalSeconds(raw);
-  if (sec === null) return "式として読めません";
-  if (sec > 0 && sec < 15) return "15秒未満です";
+  if (sec === null) return tr("式として読めません");
+  if (sec > 0 && sec < 15) return tr("15秒未満です");
   return null;
 }
 
@@ -3886,12 +4371,12 @@ function showInterval() {
     $("intervalout").textContent = note;
     $("intervalout").hidden = !note;   // 空文字を入れると、その行の余白だけ残る
   };
-  if (!raw || raw === "0") return say("自動更新なし", "");
+  if (!raw || raw === "0") return say(tr("自動更新なし"), "");
   const sec = evalSeconds(raw);
-  if (sec === null) return say("", "式として読めません");
-  if (sec <= 0) return say("= " + sec + "秒 — 自動更新なし", "");
-  if (sec < 15) return say("= " + sec + "秒", "15秒未満なので自動更新しません");
-  return say("= " + sec + "秒（" + niceDuration(sec) + "）", "");
+  if (sec === null) return say("", tr("式として読めません"));
+  if (sec <= 0) return say(tr("= {0}秒 — 自動更新なし", sec), "");
+  if (sec < 15) return say(tr("= {0}秒", sec), tr("15秒未満なので自動更新しません"));
+  return say(tr("= {0}秒（{1}）", sec, niceDuration(sec)), "");
 }
 
 $("save").onclick = async () => {
@@ -3948,7 +4433,7 @@ $("test").onclick = async () => {
   const done = () => out.style.removeProperty("--rows");
 
   out.hidden = false;
-  out.innerHTML = '<div><span class="mark wait">·</span><span>確認中…</span></div>';
+  out.innerHTML = '<div><span class="mark wait">·</span><span>' + esc(tr("確認中…")) + "</span></div>";
   // 出る行数は押した時点で決まっている（認証1行 ＋ Author の数 ＋ リポジトリの数）。
   // 残り呼び出し回数の行は gh.remaining 次第で出ないので数に入れない＝最低の行数。
   // 先に高さを取っておかないと、1行ずつ届くたびに引き出しが下へ伸びる
@@ -3956,18 +4441,18 @@ $("test").onclick = async () => {
   scrollDrawerToBottom();
 
   if (!token) {
-    row("ng", "×", "トークンが空です。入力してからもう一度押してください。");
+    row("ng", "×", tr("トークンが空です。入力してからもう一度押してください。"));
     paint(); done(); setTokenTrouble(true); return;
   }
 
   let me;
   try {
     me = (await gh("/user", token)).login;
-    row("ok", "○", "認証できました — @" + me);
+    row("ok", "○", tr("認証できました — @{0}", me));
   } catch (e) {
     row("ng", "×", e.status === 401
-      ? "トークンが無効か期限切れです。発行し直してください。"
-      : "GitHubに接続できません（" + e.message + "）");
+      ? tr("トークンが無効か期限切れです。発行し直してください。")
+      : tr("GitHubに接続できません（{0}）", e.message));
     paint(); done(); setTokenTrouble(true); return;
   }
   paint();
@@ -3977,7 +4462,7 @@ $("test").onclick = async () => {
       const u = await gh("/users/" + m, token);
       row("ok", "○", "Author — @" + u.login);
     } catch (e) {
-      row("ng", "×", "@" + m + " が見つかりません。GitHub IDの綴りを確認してください。");
+      row("ng", "×", tr("@{0} が見つかりません。GitHub IDの綴りを確認してください。", m));
     }
     paint();
   }
@@ -3985,18 +4470,18 @@ $("test").onclick = async () => {
   for (const r of repos) {
     try {
       const prs = await gh("/repos/" + r + "/pulls?state=open&per_page=100", token);
-      row("ok", "○", r + " — 開いているPR " + prs.length + "件");
+      row("ok", "○", tr("{0} — 開いているPR {1}件", r, prs.length));
     } catch (e) {
       tokenNg = true;
       row("ng", "×", r + " — " + (
-        e.status === 404 ? "見つかりません。リポジトリ名か、トークンの対象リポジトリに入っているか確認してください。" :
-        e.status === 403 ? "権限が足りません。Pull requests: Read か、SSOの認可を確認してください。" :
+        e.status === 404 ? tr("見つかりません。リポジトリ名か、トークンの対象リポジトリに入っているか確認してください。") :
+        e.status === 403 ? tr("権限が足りません。Pull requests: Read か、SSOの認可を確認してください。") :
         e.message));
     }
     paint();
   }
 
-  if (gh.remaining) row("wait", "·", "1時間あたりの残り呼び出し回数 " + gh.remaining);
+  if (gh.remaining) row("wait", "·", tr("1時間あたりの残り呼び出し回数 {0}", gh.remaining));
   paint();
   done();
   setTokenTrouble(tokenNg);
@@ -4059,11 +4544,16 @@ function hoverPrRows(chip, on) {
 }
 
 (async () => {
+  // マークアップに書いた日本語を控えるのは、JS が innerHTML を触る前の1度だけ。
+  // 先に描き始めると、控える前に消えた分を二度と訳せなくなる
+  snapStatic(document.body);
+  applyStatic();
+  paintLang();
   // 印は鍵に依存しないので、最初のカードを描く前に読んでおく
   loadMarks();
   paintBlind();
   // 鍵と設定を読む前に、レーンの枠だけ先に出す（真っ白な画面を見せないため）
-  LANES.forEach((l) => renderLane(l, null, "読み込み中…"));
+  LANES.forEach((l) => renderLane(l, null, tr("読み込み中…")));
 
   await initCrypto();
   if (cryptoNote) {
@@ -4080,7 +4570,7 @@ function hoverPrRows(chip, on) {
   // 前回の内容を先に出す。取り直しは裏で走り、終わったら差し替わる
   if (loadCache()) {
     renderBoard();
-    $("status").textContent = "前回の内容";
+    setStatus(tr("前回の内容"));
   }
   refresh();
   if (activeTab === "closed") loadClosed(true);
