@@ -270,38 +270,30 @@
 
   /* 行の歯車で開く操作。押せるかどうかはその時の PR 次第なので、
      灰色にするだけで済ませず、理由を必ず下の行に出す */
-  .ops-body { padding: 12px 14px 14px; display: grid; gap: 10px; }
-  .ops-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  /* コピーだけは性質が違う（PR を変えない）ので、間を空けて右へ寄せる */
-  .ops-row .ops-copy { margin-left: auto; }
+  /* 通信中のクルクル。相手は GitHub で、返事までの時間はこちらでは決められない。
+     押したボタンの中で回しておくと、効いたのか固まったのかが分かる */
+  @keyframes opsspin { to { transform: rotate(360deg); } }
+  .ops-btn .spin { margin-left: 5px; transform-origin: 50% 50%; animation: opsspin .9s linear infinite; }
+  /* 動きが苦手な人の設定では止める。クルクルは飾りではなく「待っている」の合図なので、
+     消さずにゆっくりにする */
+  @media (prefers-reduced-motion: reduce) { .ops-btn .spin { animation-duration: 3s; } }
   .ops-btn[disabled], .ops-btn[disabled]:hover {
     color: var(--faint); border-color: var(--line); background: none; cursor: default;
   }
-  /* draft かどうかは2択。2つの区画をつなげて1つのスイッチに見せ、
-     いまそうなっている側を塗る。絞り込みの .tgl とは別物 ——
-     あちらは1つで on/off、こちらは2つで「今どちらか」を見せる */
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
-  .seg-btn {
-    border: 0; border-radius: 0; background: var(--panel); color: var(--dim);
-    padding: 5px 14px; white-space: nowrap; text-transform: none; letter-spacing: .02em;
+  /* 1件コピー。PR を何も変えないので、PR を変える操作と同じ字のボタンにはしない。
+     ブランチ名の行の右端に、アイコンだけで置く —— 読む行の端にある道具 */
+  .ops-head .pr .branches { justify-self: stretch; width: 100%; }
+  .ops-head .ops-copy {
+    margin-left: auto; align-self: center; flex: none;
+    display: inline-flex; padding: 3px; line-height: 0;
+    border: 0; border-radius: 3px; background: none; color: var(--faint);
   }
-  .seg-btn + .seg-btn { box-shadow: inset 1px 0 0 var(--line); }
-  .seg-btn[aria-pressed="false"]:hover { color: var(--ink); background: var(--panel-hi); border: 0; }
-  /* 選ばれている側。押しても何も起きないので、指も立てない */
-  .seg-btn[aria-pressed="true"],
-  .seg-btn[aria-pressed="true"]:hover {
-    background: #1F2724; color: var(--panel); border: 0; cursor: default;
-  }
-  .seg-btn[disabled], .seg-btn[disabled]:hover {
-    color: var(--faint); background: var(--panel); border: 0; cursor: default;
-  }
-  .seg-btn[disabled][aria-pressed="true"], .seg-btn[disabled][aria-pressed="true"]:hover {
-    color: var(--panel); background: #5C6664;
-  }
-  .ops-btn.done { color: var(--ready); border-color: var(--ready); }
-  .ops-btn.fail { color: var(--review); border-color: var(--review); }
+  .ops-head .ops-copy svg { width: 13px; height: 13px; }
+  .ops-head .ops-copy:hover { color: var(--ink); background: var(--panel-hi); border: 0; }
+  .ops-head .ops-copy.done { color: var(--ready); }
+  .ops-head .ops-copy.fail { color: var(--review); }
   .ops-note {
-    margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--dim);
+    margin: 0; padding: 0 14px 12px; font-size: 11.5px; line-height: 1.7; color: var(--dim);
     white-space: pre-wrap;
   }
   .ops-note .ng { color: var(--review); }
@@ -329,8 +321,41 @@
      ここだけ地色に合わせた明るい側を持つ */
   .ops-log .yes { color: #8FE0CD; }
   .ops-log .ng { color: #FFB3BD; }
-  /* 走っている最中。二度押しを止めるのは disabled 側でやるので、ここは見た目だけ */
-  .ops.busy .ops-row { opacity: .55; }
+  /* カードの下は1つの並びだけ。左が名前、右が中身で、押すものだけ中身がボタン。
+     操作と読むだけのものを別の区画に分けるのはやめた —— どちらも「この PR 1件に
+     ついて見るもの」で、分ける理由が無かった。
+     中身が伸びたらここだけ巻く。modal ごと伸ばすとボタンが画面の外へ出る */
+  .ops-list {
+    margin: 0; padding: 11px 14px 12px; border-top: 1px solid var(--line);
+    display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px;
+    font-size: 11.5px; line-height: 1.7; min-height: 0; overflow: auto;
+  }
+  .ops-list dt {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--faint); align-self: baseline; white-space: nowrap;
+  }
+  /* ボタンの行だけは、名前を字の天井ではなくボタンの高さの真ん中に合わせる */
+  .ops-list dt.act { align-self: center; }
+  .ops-list dd { margin: 0; color: var(--dim); overflow-wrap: anywhere; }
+  .ops-list dd.act { justify-self: start; }
+  /* 押すものと読むものの境目。同じ並びに入れたぶん、ここだけ線で間を置く */
+  .ops-list .cut {
+    grid-column: 1 / -1; border-top: 1px solid var(--line); margin: 6px 0 3px;
+  }
+  /* 「無い」ことと「読めなかった」ことは、値があるのと同じ濃さでは出さない */
+  .ops-list .non, .ops-list .yet { color: var(--faint); }
+  /* 札は字の前に置く。札だけで答（あり / なし）が読めて、後ろはその補足 */
+  .ops-list .chip { margin-right: 5px; }
+  .ops-list .plus { color: var(--ready); }
+  .ops-list .minus { color: var(--review); }
+  /* GitHub の語（blocked / unstable …）はそのまま出す。言い換えだけにすると
+     GitHub の画面やドキュメントと突き合わせられない */
+  .ops-list .word { font-family: var(--mono); color: var(--ink); }
+
+  /* 走っている最中。二度押しを止めるのは disabled 側でやるので、ここは見た目だけ。
+     走らせた当人（.run）は薄めない —— クルクルが回っているのがそこなので、
+     そこまで薄めると何を待っているのかが見えなくなる */
+  .ops.busy .ops-list .ops-btn:not(.run) { opacity: .55; }
 
   .drawer-head {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -873,6 +898,10 @@
   .chip.label { text-transform: none; letter-spacing: 0; color: var(--faint); }
   .chip.merged { color: var(--ready); }
   .chip.shut   { color: var(--other); }
+  /* 操作の画面に出すコンフリクトの札。判定待ちは薄く —— 「無い」とは言っていない */
+  .chip.conflict { color: var(--review); }
+  .chip.clean    { color: var(--ready); }
+  .chip.pending  { color: var(--faint); }
 
   /* レーンの末尾。次のページを読む */
   .more {
@@ -1213,10 +1242,8 @@
   <div class="ops-scrim" id="opsscrim" hidden>
     <div class="ops" id="ops" role="dialog" aria-modal="true" aria-label="この PR の操作">
       <div class="ops-head" id="opshead"></div>
-      <div class="ops-body">
-        <div class="ops-row" id="opsrow"></div>
-        <p class="ops-note" id="opsnote"></p>
-      </div>
+      <dl class="ops-list" id="opslist"></dl>
+      <p class="ops-note" id="opsnote"></p>
     </div>
   </div>
 
@@ -1245,6 +1272,11 @@ const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="n
 const ICON_COPY = SVG + '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
 const ICON_DOC = SVG + '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
 const ICON_DONE = SVG + '<path d="M20 6 9 17l-5-5"/></svg>';
+/* 通信中のしるし（lucide の loader-circle）。SVG に class を足す必要があるので
+   SVG の定型には乗せず、ここだけ自分で書く。回すのは CSS の .spin 側 */
+const ICON_SPIN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+  'class="spin" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 const ICON_FAIL = SVG + '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 const ICON_MEMO = SVG + '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>';
 /* 表示 / 伏せる のトグル */
@@ -3096,6 +3128,9 @@ let opsFor = null;     // 開いている PR（盤面の行が持っているも
 let opsState = null;   // いまの状態。開いた直後は行が知っている分だけ
 let opsMsg = "";       // 理由の行の末尾に出す一言（進捗 / 結果 / 失敗）
 let opsLoad = null;    // 裏で走っている調べもの。早く押されたら待ち合わせる
+/* 走らせている操作 { pr, act }。どの PR のぶんかまで覚える —— 走っている途中で
+   閉じて別の行を開けるので、act だけだと関係のない PR のボタンまで止まる */
+let opsRun = null;
 const opsOpen = () => !$("opsscrim").hidden;
 
 /* 盤面の行が持っている分だけで作る初期値。draft と open はここで確定する。
@@ -3111,7 +3146,12 @@ function seedOps(pr) {
     sha: "",
     base: (pr.base && pr.base.ref) || "",
     dirty: false,
+    // コンフリクトの有無。GitHub は PR の裏で後から計算するので、
+    // 一度の GET では null（判定中）が返ることがある
+    mergeable: null,
     behind: null,
+    // 単体の GET が一緒に返してくるぶん。行は持っていないので、読めるまで null
+    more: null,
     loading: true
   };
 }
@@ -3124,11 +3164,29 @@ function openOps(pr) {
   $("opshead").innerHTML = prCard(pr);
   wireBranchCopy($("opshead"));
   wireCounts($("opshead"));
+  wireOpsCopy(pr);
   $("opsscrim").hidden = false;
   document.body.classList.add("locked");
   paintOps();
   paintOpsLog();   // この PR のぶんは modal 側に出るので、下からは引っ込める
   opsLoad = loadOps(pr);
+}
+
+/* 1件コピーを、カードのブランチ名の行の右端に挿す。カード（prCard）そのものには
+   足さない —— 同じカードは盤面の行とメモの見出しにも出ていて、そちらに
+   コピーが増えると押す的が1つ増える。ここだけの道具なので、ここで挿す */
+function wireOpsCopy(pr) {
+  const head = $("opshead");
+  // 前回のキャッシュから出ている行にはブランチ名が無いことがある。
+  // そのときは下のメタの行の端に逃がす（出ない、は選ばない）
+  const line = head.querySelector(".pr .branches") || head.querySelector(".pr .m");
+  if (!line) return;
+  line.insertAdjacentHTML("beforeend",
+    '<button class="ops-copy" type="button" title="この1件を、一覧と同じ書式でコピー"' +
+    ' aria-label="この PR 1件をコピー">' + ICON_COPY + "</button>");
+  const btn = line.lastElementChild;
+  // 合図のあとに戻す絵はアイコンそのもの（字のボタンではないので）
+  btn.onclick = () => copyText(btn, ICON_COPY, listText([pr]));
 }
 
 /* 走らせた操作の途中でも閉じられる。閉じたぶんは下の行（ops-log）が引き継ぐ */
@@ -3187,17 +3245,36 @@ function opsJobEnd(job, ok, detail) {
 
 $("opsscrim").onclick = (e) => { if (e.target === $("opsscrim")) closeOps(); };
 
+/* 単体の GET。mergeable（コンフリクトの有無）は GitHub が裏で計算していて、
+   開いた直後は null ＝「まだ判定していない」が返る。null のままでは画面に
+   何も言えないので、少し置いて取り直す。それでも null なら「判定中」として
+   出す —— 無いことにして「コンフリクトなし」と書くほうが害が大きい */
+async function prWithMergeable(pr) {
+  const path = "/repos/" + pr.base.repo.full_name + "/pulls/" + pr.number;
+  let d = await gh(path);
+  for (const wait of [1200, 2500]) {
+    // 閉じた PR では計算されない。待っても null のままなので粘らない
+    if (d.mergeable !== null || d.state !== "open" || d.merged) break;
+    await new Promise((r) => setTimeout(r, wait));
+    if (opsFor !== pr) return d;   // 閉じられた / 別の行を開かれた。もう要らない
+    d = await gh(path);
+  }
+  return d;
+}
+
 /* いまの状態を取り直す。遅れの判定に mergeable_state は使わない ——
    draft の PR では "draft" になり、遅れているかどうかが見えない。
    compare の behind_by で直に数える。数が出るので理由の側にも書ける */
 async function loadOps(pr, keepMsg) {
   const full = pr.base.repo.full_name;
   try {
-    const d = await gh("/repos/" + full + "/pulls/" + pr.number);
+    const d = await prWithMergeable(pr);
     let behind = null;
+    let ahead = null;
     try {
       const cmp = await gh("/repos/" + full + "/compare/" + baseHead(d));
       behind = cmp.behind_by;
+      ahead = cmp.ahead_by;
     } catch (e) {
       // 遅れだけ読めなかった。draft の出し入れは出せるので、ここでは止めない
       behind = null;
@@ -3210,7 +3287,10 @@ async function loadOps(pr, keepMsg) {
       draft: patch ? patch.draft : !!d.draft,
       open: d.state === "open", merged: !!d.merged,
       id: d.node_id, sha: d.head.sha, base: d.base.ref,
-      dirty: d.mergeable_state === "dirty", behind: behind, loading: false
+      // mergeable が false ＝ コンフリクト。mergeable_state の "dirty" も同じことを
+      // 言うが、あちらは draft の PR では "draft" に化けて消えるので、両方見る
+      dirty: d.mergeable === false || d.mergeable_state === "dirty",
+      mergeable: d.mergeable, behind: behind, more: moreOf(d, ahead), loading: false
     };
     if (!keepMsg) opsMsg = "";
     paintOps();
@@ -3223,11 +3303,100 @@ async function loadOps(pr, keepMsg) {
     } else {
       // 読めなかったのは「行が知らない分」だけ。draft かどうかは欄で分かっていて
       // 調べものの成否とは関係ないので、トグルは押せるまま残す
-      opsState = { ...opsState, loading: false, behind: null };
+      opsState = { ...opsState, loading: false, behind: null, mergeable: null, more: null };
       opsMsg = '<span class="ng">base からの遅れを読めませんでした（' + esc(e.message) + "）。</span>";
     }
     paintOps();
   }
+}
+
+/* GitHub が返す mergeable_state の言い換え。merge できるかどうかを1語で言うもので、
+   コンフリクト（dirty）以外の「止まっている理由」—— レビューが揃っていない
+   (blocked) / チェックが赤い (unstable) —— はこれでしか出てこない */
+const MSTATE_WORDS = {
+  clean:     "merge できる",
+  dirty:     "コンフリクトがある",
+  behind:    "base より遅れている（追いつくまで merge できない設定）",
+  blocked:   "必須のレビューかチェックが揃っていない",
+  unstable:  "必須でないチェックが落ちている（merge 自体はできる）",
+  has_hooks: "merge できる（merge のとき hook が走る）",
+  draft:     "draft のあいだは merge の可否を判定しない",
+  unknown:   "GitHub がまだ判定していない"
+};
+
+/* 単体の GET が操作の判断のついでに返してくるぶんを、画面に出す形で取っておく。
+   どれも 1件ずつの GET でしか来ないので、盤面の行は持っていない */
+function moreOf(d, ahead) {
+  const who = (d.requested_reviewers || []).map((u) => u.login);
+  const teams = (d.requested_teams || []).map((t) => t.slug);
+  return {
+    mstate: d.mergeable_state || "",
+    additions: d.additions, deletions: d.deletions,
+    changed: d.changed_files, commits: d.commits,
+    ahead: typeof ahead === "number" ? ahead : null,
+    auto: d.auto_merge || null,
+    reviewers: who.concat(teams.map((t) => d.base.repo.owner.login + "/" + t)),
+    rebaseable: d.rebaseable
+  };
+}
+
+/* 並びの読む側。読めていないあいだは項目だけ出して値を「読み中」にする ——
+   読めてから行ごと生やすと、modal の高さが後から変わってボタンが動く */
+function opsFacts() {
+  const s = opsState;
+  if (!s) return "";
+  const m = s.more;
+  const num = (n) => typeof n === "number" ? String(n) : null;
+  const yet = '<span class="yet">読み中…</span>';
+  const lost = '<span class="yet">読めませんでした</span>';
+  const none = (t) => '<span class="non">' + t + "</span>";
+  // 値は関数で渡す。読めていないときに中身を組み立てると、無い値に触って落ちる
+  const row = (dt, val, title) =>
+    "<dt" + (title ? ' title="' + esc(title) + '"' : "") + ">" + dt + "</dt>" +
+    "<dd>" + (s.loading ? yet : m ? (val() || lost) : lost) + "</dd>";
+
+  const chip = (cls, text) => '<span class="chip ' + cls + '">' + text + "</span>";
+
+  return [
+    // コンフリクトを頭に置く。update branch が灰色のときに、なぜ押せないかを
+    // 最初に読む場所がここになる
+    row("コンフリクト", () => s.dirty
+      ? chip("conflict", "あり") + "base を取り込んでも解けません。手元で直して push が要ります"
+      : s.mergeable === true ? chip("clean", "なし")
+      // 粘って取り直しても null だった。無いことにはしない
+      : chip("pending", "判定中") + "GitHub がまだ判定していません",
+      "ここが「あり」のあいだ update branch は押せない。base を入れても解けないため"),
+    row("遅れ", () => s.behind === null ? null
+      : s.behind > 0 ? "base（" + esc(s.base) + "）より " + s.behind + " コミット遅れ"
+      : "base に追いついている",
+      "base の側に、この PR が持っていないコミットが何個あるか"),
+    row("状態", () => m.mstate
+      ? '<span class="word">' + esc(m.mstate) + "</span> — " +
+        (MSTATE_WORDS[m.mstate] || "GitHub が返した値をそのまま出している")
+      : null,
+      "GitHub の mergeable_state。merge を止めているものが何かを1語で言う"),
+    row("差分", () => num(m.additions) === null ? null
+      : '<span class="plus">+' + m.additions + '</span> ' +
+        '<span class="minus">−' + m.deletions + "</span>" +
+        (num(m.changed) === null ? "" : " · " + m.changed + " ファイル"),
+      "足した行 / 消した行 / 触ったファイル数。レビューを頼む順を決める材料"),
+    row("コミット", () => num(m.commits) === null ? null
+      : m.commits + " コミット" +
+        (m.ahead === null ? "" : " · base より " + m.ahead + " 進み"),
+      "この PR が積んでいるコミット数と、base から見て進んでいる数"),
+    row("auto-merge", () => m.auto
+      ? "有効（" + esc(m.auto.merge_method || "?") +
+        (m.auto.enabled_by ? " / @" + esc(m.auto.enabled_by.login) : "") + "）"
+      : none("なし"),
+      "有効なら、条件が揃った時点で GitHub が勝手に merge する。督促は要らない"),
+    row("レビュー依頼", () => m.reviewers.length
+      ? m.reviewers.map((r) => "@" + esc(r)).join(" ")
+      : none("なし"),
+      "まだ返していない依頼先。返した人はここから消える"),
+    row("rebase", () => m.rebaseable === true ? "できる"
+      : m.rebaseable === false ? none("できない") : none("不明"),
+      "update branch（merge commit）が使えないときに、rebase なら入るか")
+  ].join("");
 }
 
 /* compare に渡す `base...head`。ブランチ名に `/` が入るので ref は encode するが、
@@ -3246,59 +3415,56 @@ function baseHead(d) {
 }
 
 /* ボタンのホバーに出す一言。押せないときは理由、押せるときは効き目。
-   状態を文章で並べるのはやめた —— 「いまは draft ではない」は
-   どちらのボタンが押せるかで分かる。ボタンで言えないもの
-   （なぜ灰色なのか、どれだけ遅れているか）だけを、ここと label に残す */
+   いまどちらの状態かは言わない —— ボタンが動詞になったので、
+   「draft を解除」と書いてあること自体が「いまは draft」を意味する */
 function opsTitle(act) {
   const s = opsState;
-  if (act === "copy") return "この PR 1件を、一覧と同じ書式でコピー";
   if (!s) return "状態を読めていない";
   if (!s.open) return s.merged ? "merge 済みの PR" : "閉じた PR";
-  if (s.loading) return "base からどれだけ遅れているか、いま調べている";
+  if (act === "draft") return "押すと draft に戻す。レビューの依頼からは外れる";
+  if (act === "ready") return "押すと draft を解除して、レビューに出す";
+  // ここから下は update branch のぶん。なぜ灰色なのかを必ず言う
+  if (s.loading) return "コンフリクトの有無と、base からの遅れを、いま調べている";
   if (s.dirty) return "コンフリクトがある。update branch は base を取り込む操作なので、これでは解けない";
   if (s.behind === null) return "base より遅れているかを読めなかった";
   if (s.behind > 0) return "base（" + s.base + "）より " + s.behind + " コミット遅れ";
   return "base に追いついている";
 }
 
-/* 2択のどちらの区画に出す一言か。選ばれている側は今の状態、
-   選ばれていない側は押したら何が起きるか */
-function opsSegTitle(to) {
-  const s = opsState;
-  if (!s) return "状態を読めていない";
-  if (!s.open) return s.merged ? "merge 済みの PR" : "閉じた PR";
-  if ((to === "draft") === s.draft) return to === "draft" ? "いまは draft" : "いまは draft ではない";
-  return to === "draft" ? "押すと draft に戻す" : "押すと解除してレビューに出す";
-}
-
 /* 下の行は、押したあとの進捗と結果だけを出す。何もしていないときは空 */
 const opsNote = () => { $("opsnote").innerHTML = opsMsg; };
+
 
 function paintOps() {
   const s = opsState;
   const live = s && s.open;
-  const btn = (act, label, on, cls) =>
-    '<button class="ops-btn' + (cls ? " " + cls : "") + '" type="button" data-act="' + act + '"' +
-      (on ? "" : " disabled") + ' title="' + esc(opsTitle(act)) + '">' + label + "</button>";
-
-  // 遅れの数はボタンに出す。押せるかどうかだけでは、どれだけ遅れているかが出ない
+  // この PR について走らせている操作。走っているあいだは何も押せなくする ——
+  // 二度押しで同じことを 2 回投げない
+  const run = opsRun && opsRun.pr === opsFor ? opsRun.act : null;
   const behind = live && s.behind > 0 ? s.behind : 0;
+  // クルクルを回す場面は 2つ。押して GitHub の返事を待っているあいだと、
+  // 押せるかどうかを決める調べものが走っているあいだ。どちらも
+  // 「このボタンの話で通信している」ので、同じ合図で足りる
+  const upSpin = run === "update" || !!(live && s.loading);
+  const drSpin = run === "draft" || run === "ready";
+  // draft は1つのボタンにした。押すとどちらへ動くかは、いまの状態の裏返し
+  const dir = s && s.draft ? "ready" : "draft";
 
-  // 塗られている側がいまの状態。もう一方を押すとそちらへ動く
-  const seg = (to, label) =>
-    '<button class="seg-btn" type="button" data-act="draft" data-to="' + to + '"' +
-      ' aria-pressed="' + String(!!(live && (to === "draft") === s.draft)) + '"' +
-      (live ? "" : " disabled") + ' title="' + esc(opsSegTitle(to)) + '">' + label + "</button>";
+  const btn = (act, label, on, spin) =>
+    '<button class="ops-btn' + (spin ? " run" : "") + '" type="button" data-act="' + act + '"' +
+      (on && !run ? "" : " disabled") + ' title="' + esc(opsTitle(act)) + '">' +
+      label + (spin ? ICON_SPIN : "") + "</button>";
+  // 押す行。名前は左、ボタンは中身の側に置く
+  const act = (dt, html) =>
+    '<dt class="act">' + dt + '</dt><dd class="act">' + html + "</dd>";
 
-  $("opsrow").innerHTML =
-    '<span class="seg" role="group" aria-label="draft かどうか">' +
-      seg("draft", "draft") + seg("ready", "not draft") +
-    "</span>" +
-    btn("update", "update branch" + (behind ? " · " + behind : ""), !!(live && !s.dirty && behind)) +
-    // コピーは PR を変えない。状態が読めなくても押せる
-    btn("copy", "この1件をコピー", true, "ops-copy");
+  $("opslist").innerHTML =
+    act("draft", btn(dir, dir === "ready" ? "draft を解除" : "draft に戻す", !!live, drSpin)) +
+    act("update", btn("update", "update branch", !!(live && !s.dirty && behind), upSpin)) +
+    // 状態そのものが読めていない（PR が消えている）ときは、読む側は並べない
+    (opsState ? '<div class="cut"></div>' + opsFacts() : "");
 
-  $("opsrow").querySelectorAll("button").forEach((b) => {
+  $("opslist").querySelectorAll("button").forEach((b) => {
     b.onclick = () => runOps(b, b.dataset.act);
   });
   opsNote();
@@ -3335,19 +3501,10 @@ const OPS_LABEL = { ready: "draft 解除", draft: "draft 化", update: "update b
 async function runOps(btn, act) {
   const pr = opsFor;
   if (!pr) return;
-
-  if (act === "copy") {
-    // 一覧と同じ書式。1件と複数を貼り混ぜても揃う
-    copyText(btn, btn.textContent, listText([pr]));
-    return;
-  }
-
   const s = opsState;
   if (!s) return;
-  // draft は2択。どちらへ動かすかは押された区画が持っている
-  const dir = act === "draft" ? btn.dataset.to : act;
-  // すでにその状態なら何もしない —— 塗られている側を押しただけ
-  if (act === "draft" && (dir === "draft") === !!s.draft) return;
+  // ボタンが動詞そのものになったので、押された act がそのまま向き
+  const dir = act;
   const word = OPS_WORDS[dir];
   const full = pr.base.repo.full_name;
   const job = opsJobStart(pr, OPS_LABEL[dir]);
@@ -3355,9 +3512,11 @@ async function runOps(btn, act) {
   const onScreen = () => opsOpen() && opsFor === pr;
 
   $("ops").classList.add("busy");
-  $("opsrow").querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  // 走っていることを覚えてから塗り直す。押せなくするのと、そのボタンの中で
+  // クルクルを回すのは、どちらも paintOps がこれを見て決める
+  opsRun = { pr: pr, act: dir };
   opsMsg = word.doing;
-  opsNote();
+  paintOps();
 
   try {
     if (dir === "update") {
@@ -3394,7 +3553,12 @@ async function runOps(btn, act) {
     opsMsg = '<span class="ng">' + word.ng + " — " + esc(e.message) + "</span>";
     paintOps();
   } finally {
-    if (onScreen()) $("ops").classList.remove("busy");
+    // 自分のぶんだけ下ろす。閉じて別の PR で走らせていたら、それはそちらのもの
+    if (opsRun && opsRun.pr === pr) opsRun = null;
+    if (onScreen()) {
+      $("ops").classList.remove("busy");
+      paintOps();   // クルクルを止めて、押せるものを戻す
+    }
   }
 }
 
