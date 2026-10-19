@@ -657,6 +657,19 @@
   .lane-head .acts .pickall input {
     width: auto; margin: 0; padding: 0; border: 0; flex: none; accent-color: var(--c);
   }
+  /* 文面を付けるかのトグル。押している間だけ色を持たせる（枠の色だけだと、
+     離れて見たときにオンかオフか読み取れない） */
+  .lane-head .acts .posttog {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--line); border-radius: 2px; padding: 4px 8px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em;
+    color: var(--dim); cursor: pointer; white-space: nowrap; user-select: none;
+  }
+  .lane-head .acts .posttog svg { width: 13px; height: 13px; }
+  .lane-head .acts .posttog:hover { color: var(--ink); border-color: var(--dim); }
+  .lane-head .acts .posttog[aria-pressed="true"] {
+    color: var(--c); border-color: var(--c); background: #F1F4F5;
+  }
   /* 件数が増減しても幅が動かないように、数字は等幅の桁で出す */
   .lane-head .acts .docopy { font-variant-numeric: tabular-nums; }
   /* 字のボタンに入る合図（コピーしました / できません）のアイコン。
@@ -1335,7 +1348,9 @@ const EN = {
 
   /* ---- 選んでコピー ---- */
   "この一覧から選んでコピー": "Pick from this lane and copy",
-  "レビュー依頼の文面ごと、選んでコピー": "Pick and copy with the review request text",
+  "文面": "Text",
+  "レビュー依頼の文面を付ける（いまは付けない）": "Add the review request text (currently off)",
+  "レビュー依頼の文面を外す（いまは付ける）": "Drop the review request text (currently on)",
   "出ている分をすべて選ぶ": "Select everything shown",
   "選択をすべて外す": "Clear the selection",
   "全選択": "Select all",
@@ -1696,8 +1711,8 @@ const LANES = [
   // 書式はどのレーンでも同じなので、最初に目に入る1か所にだけ置く
   { id: "ready",  rail: "待ち",   title: "Ready for Review",
     sub: "author | created_at - last-updated | comment-count, review-count, inline-comment-count",
-    legend: true, copy: true, post: true },
-  // 下書きも一覧のコピーは持つ。レビュー依頼の文面（post）は出す前の PR には要らないので付けない
+    legend: true, copy: true },
+  // 下書きも同じまとまりで選ぶ（1タスクに出したものと下書きが混ざる）
   { id: "draft",  rail: "下書",   title: "Draft", copy: true },
   // requested されたのは自分。英語としては to me ではなく from me が座る
   { id: "review", rail: "依頼",     title: "Requested from me" },
@@ -2809,7 +2824,11 @@ function syncLanes() {
    1タスクの中に、出したものと下書きのままのものが混ざるので、
    レーンをまたいで1回で拾えないと、2回コピーして2回貼ることになる */
 let selOn = false;         // 選択モードが開いているか
-let selKind = "list";      // list / post のどちらのボタンから入ったか
+/* レビュー依頼の文面を付けるか。選択モードの中のトグルで切り替える。
+   ふだん欲しいのはチケット番号の並びだけなので、既定は「付けない」。
+   開くたびに false に戻す —— 前に付けたことを覚えていると、
+   そのつもりのないときに文面ごと貼ってしまう */
+let selPost = false;
 let selKeys = new Set();   // 選んだ PR。prKey で持つ（index は絞り込みでずれる）
 /* 直近に盤面へ流した振り分け。renderBoard が書く。
    選んだ行をレーンをまたいで集め直すのに使う */
@@ -2838,9 +2857,9 @@ function selPrs() {
   return out;
 }
 
-function openSelect(kind) {
+function openSelect() {
   selOn = true;
-  selKind = kind;
+  selPost = false;
   selKeys.clear();
   renderBoard();
 }
@@ -2874,13 +2893,13 @@ function dropSelect() {
   refreshPending = false;
 }
 
-/* 通常のコピーボタン。押すと選択モードに入る */
+/* 通常のコピーボタン。押すと選択モードに入る。
+   見出しに常設するのはこの1つだけ —— レビュー依頼の文面を付けるかどうかは、
+   選択モードに入ってからトグルで決める（.posttog） */
 function copyActsHtml(lane) {
-  const one = (kind, say, icon) =>
-    '<button class="copy" type="button" data-kind="' + kind + '"' +
-      ' aria-label="' + esc(say) + '" title="' + esc(say) + '">' + icon + "</button>";
-  return one("list", tr("この一覧から選んでコピー"), ICON_COPY) +
-    (lane.post ? one("post", tr("レビュー依頼の文面ごと、選んでコピー"), ICON_DOC) : "");
+  const say = tr("この一覧から選んでコピー");
+  return '<button class="copy" type="button"' +
+    ' aria-label="' + esc(say) + '" title="' + esc(say) + '">' + ICON_COPY + "</button>";
 }
 
 /* 選択中の見出し。全選択/全解除・確定・やめる の3つ。
@@ -2893,10 +2912,23 @@ function selActsHtml() {
       '<input type="checkbox" class="allbox"' + (all ? " checked" : "") + ">" +
       "<span>" + (all ? tr("全解除") : tr("全選択")) + "</span>" +
     "</label>" +
+    postTogHtml() +
     '<button class="docopy" type="button"' + (n ? "" : " disabled") + ">" +
       esc(tr("コピー {0}件", n)) + "</button>" +
     '<button class="xbtn" type="button" aria-label="' + esc(tr("選ぶのをやめる")) + '"' +
       ' title="' + esc(tr("やめる")) + '">' + ICON_FAIL + "</button>";
+}
+
+/* レビュー依頼の文面を付けるかのトグル。押した1個目（コピー）の隣に、
+   選択モードの間だけ出る。オフのときはブランチ名のチケット番号だけを並べ、
+   オンのときは文面ごと貼る */
+function postTogHtml() {
+  const say = selPost
+    ? tr("レビュー依頼の文面を外す（いまは付ける）")
+    : tr("レビュー依頼の文面を付ける（いまは付けない）");
+  return '<button class="posttog" type="button" aria-pressed="' + (selPost ? "true" : "false") + '"' +
+    ' title="' + esc(say) + '" aria-label="' + esc(say) + '">' +
+    ICON_DOC + "<span>" + esc(tr("文面")) + "</span></button>";
 }
 
 /* 見出しの数とトグルの字だけ塗り替える。行は触らない ——
@@ -2914,6 +2946,15 @@ function paintSelHeads() {
     btn.disabled = n === 0;
     const box = el.querySelector(".allbox");
     if (box) box.checked = n > 0;
+    const tog = el.querySelector(".posttog");
+    if (tog) {
+      const say = selPost
+        ? tr("レビュー依頼の文面を外す（いまは付ける）")
+        : tr("レビュー依頼の文面を付ける（いまは付けない）");
+      tog.setAttribute("aria-pressed", selPost ? "true" : "false");
+      tog.title = say;
+      tog.setAttribute("aria-label", say);
+    }
     const lbl = el.querySelector(".pickall");
     if (lbl) {
       lbl.querySelector("span").textContent = n > 0 ? tr("全解除") : tr("全選択");
@@ -3015,15 +3056,22 @@ function renderLane(lane, prs, emptyMsg) {
       renderBoard();   // 複数レーンの全行で見た目が変わるので、盤面ごと引き直す
     };
 
+    const togBtn = el.querySelector(".posttog");
+    if (togBtn) togBtn.onclick = () => {
+      selPost = !selPost;
+      // 行は何も変わらないので、見出しだけ塗り直す
+      paintSelHeads();
+    };
+
     const doBtn = el.querySelector(".docopy");
     if (doBtn) doBtn.onclick = () => {
       const picked = selPrs();
       if (!picked.length) return;
-      const body = listText(picked);
+      const body = listText(picked, selPost);
       // 合図を出し切ってから閉じる。すぐ閉じると renderBoard でボタンごと
       // 作り直され、「コピーしました」が出ないまま盤面が動く
       copyText(doBtn, tr("コピー {0}件", picked.length),
-        selKind === "post" ? REVIEW_TEMPLATE + "\n\n" + body : body,
+        selPost ? REVIEW_TEMPLATE + "\n\n" + body : body,
         closeSelect);
     };
 
@@ -3031,25 +3079,37 @@ function renderLane(lane, prs, emptyMsg) {
     if (xBtn) xBtn.onclick = () => closeSelect();
   } else if (canCopy) {
     el.querySelectorAll(".copy").forEach((btn) => {
-      btn.onclick = () => openSelect(btn.dataset.kind);
+      btn.onclick = () => openSelect();
     });
   }
 
   syncLanes();
 }
 
-/* 一覧のテキスト。1件2行で、1行目はタイトル、2行目は全角スペース下げで URL。
-   ただし1件だけのときは、1行目をブランチ名にする（そのまま貼って動かしやすい）。
-   ブランチ名が取れない（未更新の PR 等）ときは通常の書式に落とす */
-function listText(prs) {
-  if (prs.length === 1) {
-    const pr = prs[0];
-    const head = pr.head && pr.head.ref;
-    if (head) return "- " + head + "\n　" + pr.html_url;
-  }
-  return prs.map((pr) =>
-    "- " + pr.base.repo.name + " #" + pr.number + " " + pr.title + "\n　" + pr.html_url
-  ).join("\n");
+/* ブランチ名からチケット番号だけを取り出す。bd-1234 と、同じチケットで
+   PR を分けたときの bd-1234-01 の2つの形。feature/bd-1234-foo のように
+   前後に何か付いていても拾う。見つからなければ null を返して、
+   呼ぶ側で元の書式に落とす —— 無理に短くして何の PR か分からなくしない */
+function ticketOf(pr) {
+  const head = pr.head && pr.head.ref;
+  if (!head) return null;
+  const m = head.match(/\b(bd|nd)-(\d+)(-\d+)?\b/i);
+  return m ? m[0].toLowerCase() : null;
+}
+
+/* 一覧のテキスト。1件2行で、2行目は全角スペース下げで URL。
+   文面を付けないとき（トグルがオフ）の1行目はブランチ名のチケット番号だけ ——
+   貼り先ではどの作業かが分かればよく、リポジトリ名やタイトルは要らない。
+   チケット番号が取れないときはブランチ名、それも無ければ通常の書式に落とす。
+   文面を付けるとき（オン）はレビュー依頼として読まれるので、
+   リポジトリ名・番号・タイトルを出す */
+function listText(prs, post) {
+  const full = (pr) => pr.base.repo.name + " #" + pr.number + " " + pr.title;
+  const head = (pr) => {
+    if (post) return full(pr);
+    return ticketOf(pr) || (pr.head && pr.head.ref) || full(pr);
+  };
+  return prs.map((pr) => "- " + head(pr) + "\n　" + pr.html_url).join("\n");
 }
 
 /* クリップボードへ入れて、結果を一瞬アイコンで知らせる。
