@@ -1351,8 +1351,8 @@ const EN = {
   "文面": "Text",
   "レビュー依頼の文面を付ける（いまは付けない）": "Add the review request text (currently off)",
   "レビュー依頼の文面を外す（いまは付ける）": "Drop the review request text (currently on)",
-  "出ている分をすべて選ぶ": "Select everything shown",
-  "選択をすべて外す": "Clear the selection",
+  "この一覧に出ている分を選ぶ": "Select everything shown in this lane",
+  "この一覧の選択を外す": "Clear this lane's selection",
   "全選択": "Select all",
   "全解除": "Clear",
   "コピー {0}件": "Copy {0}",
@@ -2851,10 +2851,16 @@ function selLanes() {
    —— 見えていないものを黙ってコピーしない */
 function selPrs() {
   const out = [];
-  for (const lane of selLanes()) {
-    for (const pr of lastBuckets[lane.id]) if (selKeys.has(prKey(pr))) out.push(pr);
-  }
+  for (const lane of selLanes()) out.push(...selPrsIn(lane));
   return out;
+}
+
+/* そのレーンで選ばれている分だけ。全選択/全解除はこのレーン1本が対象 ——
+   まとまり全体を一度に選ぶと、待ちと下書きの両方を拾ってしまい、
+   欲しかった側だけに戻すのに外す手間がかかる */
+function selPrsIn(lane) {
+  const prs = (lastBuckets && lastBuckets[lane.id]) || [];
+  return prs.filter((pr) => selKeys.has(prKey(pr)));
 }
 
 function openSelect() {
@@ -2902,13 +2908,15 @@ function copyActsHtml(lane) {
     ' aria-label="' + esc(say) + '" title="' + esc(say) + '">' + ICON_COPY + "</button>";
 }
 
-/* 選択中の見出し。全選択/全解除・確定・やめる の3つ。
+/* 選択中の見出し。全選択/全解除・文面・確定・やめる。
    全選択と全解除は1つのトグルにする —— ボタンを2つ並べるより、
-   選択0なら「全選択」、1件以上なら「全解除」の1つで両方できる */
-function selActsHtml() {
+   選択0なら「全選択」、1件以上なら「全解除」の1つで両方できる。
+   対象はその見出しのレーンだけ。コピーの件数はまとまり全体の数を出す ——
+   押したときに何件貼るかは、どの見出しから見ても同じでなければ読めない */
+function selActsHtml(lane) {
   const n = selPrs().length;
-  const all = n > 0;
-  return '<label class="pickall" title="' + (all ? tr("選択をすべて外す") : tr("出ている分をすべて選ぶ")) + '">' +
+  const all = selPrsIn(lane).length > 0;
+  return '<label class="pickall" title="' + (all ? tr("この一覧の選択を外す") : tr("この一覧に出ている分を選ぶ")) + '">' +
       '<input type="checkbox" class="allbox"' + (all ? " checked" : "") + ">" +
       "<span>" + (all ? tr("全解除") : tr("全選択")) + "</span>" +
     "</label>" +
@@ -2934,7 +2942,8 @@ function postTogHtml() {
 /* 見出しの数とトグルの字だけ塗り替える。行は触らない ——
    1件選ぶたびに引き直すと、押した場所からスクロールが飛ぶ。
    操作はコピーできるレーンそれぞれの見出しに出るので、全部まとめて塗る。
-   出る数はどこも同じ「まとまり全体で何件か」—— レーンごとの数ではない */
+   コピーの件数はどこも同じ「まとまり全体で何件か」。
+   全選択/全解除だけはレーンごとの数で決まる */
 function paintSelHeads() {
   const n = selPrs().length;
   for (const lane of LANES) {
@@ -2944,8 +2953,9 @@ function paintSelHeads() {
     if (!btn) continue;   // このレーンは選択モードの見出しを出していない
     btn.textContent = tr("コピー {0}件", n);
     btn.disabled = n === 0;
+    const mine = selPrsIn(lane).length > 0;
     const box = el.querySelector(".allbox");
-    if (box) box.checked = n > 0;
+    if (box) box.checked = mine;
     const tog = el.querySelector(".posttog");
     if (tog) {
       const say = selPost
@@ -2957,8 +2967,8 @@ function paintSelHeads() {
     }
     const lbl = el.querySelector(".pickall");
     if (lbl) {
-      lbl.querySelector("span").textContent = n > 0 ? tr("全解除") : tr("全選択");
-      lbl.title = n > 0 ? tr("選択をすべて外す") : tr("出ている分をすべて選ぶ");
+      lbl.querySelector("span").textContent = mine ? tr("全解除") : tr("全選択");
+      lbl.title = mine ? tr("この一覧の選択を外す") : tr("この一覧に出ている分を選ぶ");
     }
   }
 }
@@ -2988,7 +2998,7 @@ function renderLane(lane, prs, emptyMsg) {
     '<div class="lane-body">' +
       '<div class="lane-head"><h2>' + esc(lane.title) + "</h2>" +
         (lane.sub ? '<span class="sub' + (lane.legend ? " legend" : "") + '">' + esc(lane.sub) + "</span>" : "") +
-        (canCopy ? '<span class="acts">' + (sel ? selActsHtml() : copyActsHtml(lane)) + "</span>" : "") +
+        (canCopy ? '<span class="acts">' + (sel ? selActsHtml(lane) : copyActsHtml(lane)) + "</span>" : "") +
       "</div>" +
       rows + more +
     "</div>";
@@ -3050,10 +3060,11 @@ function renderLane(lane, prs, emptyMsg) {
 
     const allBox = el.querySelector(".allbox");
     if (allBox) allBox.onchange = () => {
-      // 全選択も全解除も、まとまり（待ち＋下書き）の全部が対象
-      if (selPrs().length) selKeys.clear();
-      else for (const l of selLanes()) for (const pr of lastBuckets[l.id]) selKeys.add(prKey(pr));
-      renderBoard();   // 複数レーンの全行で見た目が変わるので、盤面ごと引き直す
+      // 全選択も全解除も、その見出しのレーンに出ている分だけが対象
+      const prsHere = (lastBuckets && lastBuckets[lane.id]) || [];
+      if (selPrsIn(lane).length) for (const pr of prsHere) selKeys.delete(prKey(pr));
+      else for (const pr of prsHere) selKeys.add(prKey(pr));
+      renderBoard();   // そのレーンの全行で見た目が変わるので、盤面ごと引き直す
     };
 
     const togBtn = el.querySelector(".posttog");
